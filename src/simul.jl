@@ -123,7 +123,17 @@ function sims_stats(sims::AbstractDataFrame)
 end
 
 
-function regblks_simulation(ptable, model, grid, allcomps, doms_filter, comps_filter, discr)
+function regblks_simulation(
+    ptable,
+    model,
+    grid,
+    allcomps,
+    doms_filter,
+    comps_filter,
+    discr;
+    histfolder = "./sims_hist/",
+    variofolder = "./sims_vario/",
+)
     est_group = groupby(ptable, [:var, :model_domain])
     println("\nBLOCK SIMULS")
     for group in est_group
@@ -142,9 +152,9 @@ function regblks_simulation(ptable, model, grid, allcomps, doms_filter, comps_fi
             simul(group, Symbol(evar), to_estim, allcomps, comps_filter)
 
         CSV.write("regsim_$(evar)_$(dom).csv", sims)
-        CSV.write("./sims_hist/valsim_hist_$(evar)_$(dom).csv", histdf)
-        CSV.write("./sims_hist/valsim_shist_$(evar)_$(dom).csv", mstats)
-        CSV.write("./sims_vario/valsim_variog_$(evar)_$(dom).csv", variopts)
+        CSV.write("$(histfolder)valsim_hist_$(evar)_$(dom).csv", histdf)
+        CSV.write("$(histfolder)valsim_shist_$(evar)_$(dom).csv", mstats)
+        CSV.write("$(variofolder)valsim_variog_$(evar)_$(dom).csv", variopts)
     end
 end
 
