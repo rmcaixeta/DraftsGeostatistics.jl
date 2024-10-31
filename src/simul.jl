@@ -19,11 +19,11 @@ function nreal_partitions(nreal, npart)
     v
 end
 
-function simsvcat(ensembles...)
-    e1 = ensembles[1]
-    varname = keys(e1.reals)[1]
-    Ensemble(e1.domain, (; varname => mapreduce(e -> e.reals[varname], vcat, ensembles)))
-end
+# function simsvcat(ensembles...)
+#     e1 = ensembles[1]
+#     varname = e1.vars[1]
+#     Ensemble(e1.domain, (; varname => mapreduce(e -> e.reals[varname], vcat, ensembles)))
+# end
 
 function simul(group, evar, to_estim, allcomps, comps_filter)
     grades_simul(group, evar, to_estim, allcomps, comps_filter)
@@ -106,9 +106,9 @@ end
 
 
 function sims_stats(sims::Ensemble, evar)
-    reals = sims.reals[evar]
+    reals = sims.reals
     mstats = mapreduce(vcat, reals) do sim
-        hcat(mean(sim), var(sim))
+        hcat(mean(sim[evar]), var(sim[evar]))
     end
     mstats = round.(mean(mstats, dims = 1), digits = 2)
     DataFrame(mstats, [:mean, :var])
@@ -167,7 +167,7 @@ function nscore(data; weights = nothing)
 end
 
 function back_nscore(sims::Ensemble, ireal::Int, evar, refd; georef = false)
-    vals = sims.reals[evar][ireal]
+    vals = sims.reals[ireal][evar]
     georef ? georef((; evar => back_nscore(vals, refd)), sims.domain) :
     DataFrame((; evar => back_nscore(vals, refd)))
 end
@@ -188,15 +188,15 @@ back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Norma
 #		evar = group[!, :var][1]
 #		dom  = group[!, :name_domain][1]
 #		println(" - Validations $evar $dom")
-#		
+#
 #		# "./sims_hist/valsim_hist_$(evar)_$(dom).csv", histdf
 #		# "./sims_hist/valsim_shist_$(evar)_$(dom).csv", mstats
 #		# "./sims_vario/valsim_variog_$(evar)_$(dom).csv", variopts
-#		
+#
 #		hmodel = CSV.read("./sims_hist/valsim_hist_$(evar)_$(dom).csv", DataFrame)
 #		nstats = CSV.read("./sims_hist/valsim_shist_$(evar)_$(dom).csv", DataFrame)
 #		vmodel = CSV.read("./sims_vario/valsim_variog_$(evar)_$(dom).csv", DataFrame)
-#		
+#
 #		# hist graphs
 #		nu, nv = nstats[1,:mean], nstats[1,:var]
 #		simcols = [x for x in names(hmodel) if !(x in ["samples","q"])]
@@ -207,7 +207,7 @@ back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Norma
 #		end
 #		Mke.lines!(ax, hmodel.samples, hmodel.q, color=:black, linestyle=:dash)
 #		Mke.save("./sims_hist/hist_$(evar)_$(dom).png", fig)
-#		
+#
 #		# vario graphs
 #		vario = evalstr(group[!, :variogram][1])
 #		mstats = sims_stats(vmodel[:,simcols])
@@ -230,8 +230,8 @@ back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Norma
 #		end
 #
 #		vmodel = georef(vmodel, (:x,:y,:z))
-#		
-#		
+#
+#
 #		simsvar = mapreduce(vcat,simcols) do col
 #			mapreduce(vcat,enumerate(emps)) do (i,emp)
 #				name = "$(col)$(i)"
@@ -244,7 +244,7 @@ back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Norma
 #				hcat(n,ustrip.(x),y,p)
 #			end
 #		end
-#		
+#
 #		println("Doing theoretical varios ...")
 #		modelsvar = mapreduce(vcat,enumerate(emps)) do (i,emp)
 #			vfrom = Point(0,0,0)
@@ -256,7 +256,7 @@ back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Norma
 #				hcat("model$i",x,y,0)
 #			end
 #		end
-#		
+#
 #		varios = DataFrame(vcat(simsvar,modelsvar),[:name,:x,:y,:p])
 #
 #		# Loop through each directory
@@ -280,7 +280,7 @@ back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Norma
 #			Mke.lines!(ax, dfe.x, dfe.y_median, color = :black, linestyle = :dash, alpha = 0.8)
 #			Mke.save("./sims_vario/vario_$(evar)_$(dom)_$(endval).png", fig)  # Save the figure to a PNG file
 #		end
-#		
+#
 #	end
 #end
 #
