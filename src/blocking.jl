@@ -14,8 +14,7 @@ function oweight(domain::Domain, method::BlockWeighting, offsets::Int; mode = "s
     offd = -1 .* method.sides ./ (offsets + 1)
     weights = zeros(nelements(domain) + 1)
     dims = embeddim(domain)
-    offrange =
-        mode == "prod" ? Iterators.product([0:offsets for d = 1:dims]...) : 0:offsets
+    offrange = mode == "prod" ? Iterators.product([0:offsets for d = 1:dims]...) : 0:offsets
 
     for d in offrange
         opt = orig |> Translate((d .* offd)...)
@@ -123,7 +122,10 @@ function downscale(geotable::AbstractGeoTable, factors; blks = true, ds = nothin
     ds = isnothing(ds) ? get_spacing(geotable) : ds
     hs = ustrip.([d / 2 for d in ds])
     subd = ustrip.([d / x for (d, x) in zip(ds, factors)])
-    isub = ustrip.([collect(y) .* subd for y in Iterators.product([0:(x-1) for x in factors]...)])
+    isub =
+        ustrip.([
+            collect(y) .* subd for y in Iterators.product([0:(x-1) for x in factors]...)
+        ])
     outfun = blks ? new_subblocks : new_subpts
     chunks = collect(partition(geotable, UniformPartition(Threads.nthreads(), false)))
     new_geoms = foldxt(

@@ -6,6 +6,7 @@ using Distances
 using Distributions: Normal
 using GeoStats
 using LinearAlgebra
+using LocalAnisotropies
 using NearestNeighbors
 using Optim
 using Printf
@@ -54,6 +55,6 @@ export composite,
     blocks_iterator,
     cell_declus_tests,
     nscore,
-    back_nscore
-
+    back_nscore,
+    AdvBallSearch
 end

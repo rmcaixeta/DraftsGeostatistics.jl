@@ -35,11 +35,11 @@ function model_from_pars(pars, vvar, sts; id = 1)
     model, flagerror
 end
 
-variovalues(v::EmpiricalVariogram) = (v.abscissas,v.ordinates,v.counts)
+variovalues(v::EmpiricalVariogram) = (v.abscissas, v.ordinates, v.counts)
 
 function obj_function(pars, vario, sts, vvar)
     mse = 0.0
-    for (i,v) in enumerate(vario)
+    for (i, v) in enumerate(vario)
         model, flag = model_from_pars(pars, vvar, sts, id = i)
         penalty = flag ? vvar : 0.0
 

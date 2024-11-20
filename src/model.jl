@@ -173,9 +173,17 @@ function extract_intrusion_pts(
     georef(out, (:X, :Y, :Z))
 end
 
+LocalEstimator = LocalAnisotropies.LocalKrigingModel
 
-
-function intrusion_model(sd, interpolant, grid; subblocks_split = (3, 3, 8))
+function intrusion_model(
+    sd,
+    interpolant,
+    grid;
+    subblocks_split = (3, 3, 8),
+    sub_interpolant = IDW(3),
+    maxneighbors = 100,
+    sub_maxneighbors = 50,
+)
 
     sdev = std(sd.SD)
     dh = @transform(sd, :SD = :SD / sdev)
@@ -186,32 +194,46 @@ function intrusion_model(sd, interpolant, grid; subblocks_split = (3, 3, 8))
 
     # estimate in parent blocks
     out = grid isa CartesianGrid ? grid : grid.geometry
-    est = dh |> InterpolateNeighbors(out, :SD => interpolant, maxneighbors = 100)
+    interpfun = interpolant isa LocalEstimator ? LocalInterpolate : InterpolateNeighbors
+    est = dh |> interpfun(out, :SD => interpolant, maxneighbors = maxneighbors)
     #add ijk
     est = hcat(est, georef((IJK = 1:nrow(est),), est.geometry))
     lim = ustrip(maximum(res_init) / (sdev * 2))
     #filter
     m = ustrip.(abs.(est.SD)) .< lim
     ok = est[.!m, :]
-    #ok = est |> GeoStats.Filter(row -> !(-1*lim <= row.SD <= lim))
 
     # estimate in subblocks
-    #nhood = AdvBallSearch(dh, MetricBall(200), k=20, maxpercategory=(HOLEID=4,))
     ##downscale
-    #refined = est |> GeoStats.Filter(row -> -1*lim <= row.SD <= lim) |> Downscale(subblocks_split...)
     refined = downscale(est[m, :], subblocks_split)
-    #refined = downscale(est |> GeoStats.Filter(row -> -1*lim <= row.SD <= lim),subblocks_split)
     ##interpolate2
-    chunks =
-        collect(partition(refined.geometry, UniformPartition(Threads.nthreads(), false)))
-    est = foldxt(
-        vcat,
-        Transducers.Map(
-            x -> dh |> InterpolateNeighbors(x, :SD => IDW(3), maxneighbors = 50),
-        ),
-        withprogress(chunks; interval = 1e-3),
-    ) # , neighborhood=nhood
-    #est = dh |> InterpolateNeighbors(refined.geometry, :SD=>interpolant, maxneighbors=100)
+
+    est = if sub_interpolant isa LocalEstimator
+        lp_ = nnpars(sub_interpolant.localaniso, grid, refined)
+        sub_interpolant_ = LocalKriging(sub_interpolant.method,lp_,sub_interpolant.γ)
+        dh |> LocalInterpolate(
+            refined.geometry,
+            :SD => sub_interpolant_,
+            maxneighbors = sub_maxneighbors,
+        )
+    else
+        chunks = collect(
+            partition(refined.geometry, UniformPartition(Threads.nthreads(), false)),
+        )
+        foldxt(
+            vcat,
+            Transducers.Map(
+                x ->
+                    dh |> InterpolateNeighbors(
+                        x,
+                        :SD => sub_interpolant,
+                        maxneighbors = sub_maxneighbors,
+                    ),
+            ),
+            chunks,
+        )
+    end
+
     est = hcat(est, georef((IJK = refined.IJK,), refined.geometry))
     est = vcat(est, ok)
     est = @transform(est, :SD = :SD * sdev)
