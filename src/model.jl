@@ -173,7 +173,7 @@ function extract_intrusion_pts(
     georef(out, (:X, :Y, :Z))
 end
 
-LocalEstimator = LocalAnisotropies.LocalKrigingModel
+LocalEstimator = Union{LocalKrigingModel,LocalIDWModel}
 
 function intrusion_model(
     sd,
@@ -210,7 +210,10 @@ function intrusion_model(
 
     est = if sub_interpolant isa LocalEstimator
         lp_ = nnpars(sub_interpolant.localaniso, grid, refined)
-        sub_interpolant_ = LocalKriging(sub_interpolant.method,lp_,sub_interpolant.γ)
+        sub_interpolant_ =
+            sub_interpolant isa LocalKrigingModel ?
+            LocalKriging(sub_interpolant.method, lp_, sub_interpolant.γ) :
+            LocalIDW(sub_interpolant.exponent, lp_)
         dh |> LocalInterpolate(
             refined.geometry,
             :SD => sub_interpolant_,

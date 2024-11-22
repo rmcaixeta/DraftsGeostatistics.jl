@@ -17,6 +17,7 @@ using Transducers
 using Unitful
 import CoordRefSystems: lentype
 import NearestNeighbors: MinkowskiMetric
+import LocalAnisotropies: LocalKrigingModel, LocalIDWModel
 
 include("dh/definitions.jl")
 include("dh/compositing.jl")
