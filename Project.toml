@@ -24,7 +24,7 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
 CSV = "0.10"
-CoordRefSystems = "0.15"
+CoordRefSystems = "0.15, 0.16"
 DataFrames = "1.7"
 Distances = "0.10"
 Distributions = "0.25"

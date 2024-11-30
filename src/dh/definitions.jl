@@ -17,6 +17,7 @@ Base.@kwdef struct Collar
     enddepth::Union{String,Symbol,Nothing} = nothing
 end
 
+Collar(file; kwargs...) = Collar(; file, kwargs...)
 Base.show(io::IO, tb::Collar) = print(io, "Collar")
 Base.show(io::IO, ::MIME"text/plain", tb::Collar) = print(io, "Collar object")
 
@@ -55,6 +56,7 @@ struct Survey
     end
 end
 
+Survey(file; kwargs...) = Survey(; file, kwargs...)
 Base.show(io::IO, tb::Survey) = print(io, "Survey")
 Base.show(io::IO, ::MIME"text/plain", tb::Survey) = print(io, "Survey object")
 
@@ -72,6 +74,7 @@ Base.@kwdef struct Interval
     to::Union{String,Symbol} = :TO
 end
 
+Interval(file; kwargs...) = Interval(; file, kwargs...)
 Base.show(io::IO, tb::Interval) = print(io, "Interval")
 Base.show(io::IO, ::MIME"text/plain", tb::Interval) = print(io, "Interval object")
 
@@ -119,4 +122,31 @@ end
 
 macro varname(arg)
     string(arg)
+end
+
+function aux_fpaths(fpath)
+    tpath = replace(fpath, r"\.csv$" => "_trace.csv")
+    ppath = replace(fpath, r"\.csv$" => "_pars.csv")
+    wpath = replace(fpath, r"\.csv$" => "_warns.csv")
+    tpath, ppath, wpath
+end 
+
+function write_dh(fpath::String, dh::DrillHole)
+    # !endswith(fpath, ".csv") -> do something
+    tpath, ppath, wpath = aux_fpaths(fpath)
+    CSV.write(fpath, dh.table)
+    CSV.write(tpath, dh.trace)
+    pars = (pars=[string(dh.pars)],)
+    CSV.write(ppath, pars)
+    CSV.write(wpath, dh.warns)
+end
+
+function read_dh(fpath::String)
+    tpath, ppath, wpath = aux_fpaths(fpath)
+    tab = CSV.read(fpath, DataFrame)
+    trace = CSV.read(tpath, DataFrame)
+    pars = CSV.read(ppath, DataFrame)[1,:pars]
+    pars = eval(Meta.parse(pars))
+    warns = CSV.read(wpath, DataFrame)
+    DrillHole(tab, trace, pars, warns)
 end

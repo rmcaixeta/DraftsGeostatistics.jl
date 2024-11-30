@@ -427,3 +427,22 @@ function extrapolate_borders(dh_; min_dip = 45.0, ignore_lower = [], ignore_uppe
     fillxyz!(newdh, dh_.trace, pars, output = ["mid", "from", "to"])
     DrillHole(newdh, dh_.trace, pars, dh_.warns)
 end
+
+
+function localaniso_from_pts(comps; ratios=[1.0,1.0,0.5])
+    holeid = comps.pars.holeid
+    f = row -> -1 <= row[:SD] < 0
+    sd = extract_intrusion_pts(comps, :info_catg_, ["Interior"], ["Exterior"]) |> GeoStats.Filter(f)
+
+    ball = AdvBallSearch(sd, MetricBall(200), k=3, maxpercategory=(; holeid=>1),rank_metric=:same)
+    geom = sd.geometry
+
+    tri = mapreduce(vcat,geom) do pt
+    p = centroid(pt)
+    n = search(p, ball)
+    Triangle(geom[n]...)
+    end
+
+    tri = GeometrySet(tri)
+    tri, localanisotropies(Geometric, tri, ratios)
+end

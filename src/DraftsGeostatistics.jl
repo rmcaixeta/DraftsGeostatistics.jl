@@ -36,6 +36,8 @@ include("simul.jl")
 export composite,
     drillhole,
     exportwarns,
+    read_dh,
+    write_dh,
     Collar,
     Interval,
     Survey,
@@ -57,5 +59,6 @@ export composite,
     cell_declus_tests,
     nscore,
     back_nscore,
-    AdvBallSearch
+    AdvBallSearch,
+    localaniso_from_pts
 end

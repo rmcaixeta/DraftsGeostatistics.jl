@@ -19,11 +19,15 @@ function nreal_partitions(nreal, npart)
     v
 end
 
-# function simsvcat(ensembles...)
-#     e1 = ensembles[1]
-#     varname = e1.vars[1]
-#     Ensemble(e1.domain, (; varname => mapreduce(e -> e.reals[varname], vcat, ensembles)))
-# end
+
+function simsvcat(ensembles...)
+    domain = ensembles[1].domain
+    vars = ensembles[1].vars
+    fetch = ensembles[1].fetch
+    reals = mapreduce(e -> e.reals, vcat, ensembles)
+    Ensemble(domain, vars, reals, fetch)
+end
+
 
 function simul(group, evar, to_estim, allcomps, comps_filter)
     grades_simul(group, evar, to_estim, allcomps, comps_filter)
