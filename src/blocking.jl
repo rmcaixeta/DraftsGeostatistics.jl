@@ -181,12 +181,24 @@ function new_subpts(geotable, hs, isub, subd)
 
 end
 
-function merge_subblocks(models)
+function to_dataframe(df)
+    cols = names(df)
+    rows = 1:nrow(df)
+    sblks = DataFrame(values(df))
+    if !("x" in cols)
+        sblks[!,:x] = [ustrip(to(centroid(df.geometry, i))[1]) for i = rows]
+        sblks[!,:y] = [ustrip(to(centroid(df.geometry, i))[2]) for i = rows]
+        sblks[!,:z] = [ustrip(to(centroid(df.geometry, i))[3]) for i = rows]
+    end
+    sblks
+end
 
-    sblk1 = models[1] isa DataFrame ? models[1] : DataFrame(values(models[1]))
+function merge_subblocks(model1, model2)
+
+    sblk1 = model1 isa DataFrame ? model1 : to_dataframe(model1)
     sblk1 = sblk1 |> Sort([:IJK, :x, :y, :z])
 
-    sblk2 = models[2] isa DataFrame ? models[2] : DataFrame(values(models[2]))
+    sblk2 = model2 isa DataFrame ? model2 : to_dataframe(model2)
     sblk2 = sblk2 |> Sort([:IJK, :x, :y, :z])
 
     ijk1 = countmap(sblk1[:, :IJK])
@@ -240,7 +252,7 @@ function merge_subblocks(models)
     sblk1
 end
 
-
+merge_subblocks(models...) = reduce(merge_subblocks, models)
 
 # estimation case
 function regblks_to_subblks(ptable, model, doms_filter; mode = :standard)

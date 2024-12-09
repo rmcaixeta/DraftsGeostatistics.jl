@@ -429,19 +429,19 @@ function extrapolate_borders(dh_; min_dip = 45.0, ignore_lower = [], ignore_uppe
 end
 
 
-function localaniso_from_pts(comps; ratios=[1.0,1.0,0.5])
+function localaniso_from_pts(comps; ratios=[1.0,1.0,0.5], ball=200)
     holeid = comps.pars.holeid
     f = row -> -1 <= row[:SD] < 0
     sd = extract_intrusion_pts(comps, :info_catg_, ["Interior"], ["Exterior"]) |> GeoStats.Filter(f)
 
-    ball = AdvBallSearch(sd, MetricBall(200), k=3, maxpercategory=(; holeid=>1),rank_metric=:same)
+    searcher = AdvBallSearch(sd, MetricBall(ball), k=3, maxpercategory=(; holeid=>1),rank_metric=:same)
     geom = sd.geometry
 
     tri = mapreduce(vcat,geom) do pt
-    p = centroid(pt)
-    n = search(p, ball)
-    Triangle(geom[n]...)
-    end
+        p = centroid(pt)
+        n = search(p, searcher)
+        length(n) == 3 ? Triangle(geom[n]...) : nothing
+    end |> x -> filter(!isnothing, x)
 
     tri = GeometrySet(tri)
     tri, localanisotropies(Geometric, tri, ratios)

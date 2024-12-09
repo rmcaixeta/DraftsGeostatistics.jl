@@ -115,8 +115,6 @@ function GeoStats.searchdists!(
     mask = nothing,
 )
     u = unit(lentype(pₒ))
-    tree = method.tree
-    dmax = radius(method.ball)
     domain = method.domain
 
     inds = search(pₒ, BallSearch(domain, method.ball), mask = mask)
