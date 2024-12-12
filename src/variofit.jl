@@ -100,16 +100,18 @@ end
 
 Base.length(x::VariographyResult) = length(x.groups)
 
-function multifit(dh::GeoTable, vartable::AbstractDataFrame; ns = false)
+function multifit(dh::AbstractGeoTable, vartable::AbstractDataFrame; ns = false)
     filters = get_filters(vartable, :domain)
     multifit(dh, vartable, filters; ns)
 end
 
 function multifit(
-    dh::GeoTable,
+    dh::AbstractGeoTable,
     vartable::AbstractDataFrame,
     filters::AbstractVector;
     ns = false,
+    localpars = nothing, 
+    localpts = nothing,
 )
     enames = [v for v in names(vartable) if startswith(v, "evario")] #sort or constrain?
 
@@ -128,7 +130,8 @@ function multifit(
             pars = evalstr(ln[col])
             args1 = haskey(pars, :args) ? pars.args : []
             args2 = (dhx, ln.var) # modify for multivar case
-            pars.fun(args1..., args2...; pars.kwargs...)
+            kws2 = pars.fun == LocalVariogram ? (localpars=localpars, localpts=localpts) : [] 
+            pars.fun(args1..., args2...; kws2..., pars.kwargs...)
         end
         !(evario isa AbstractVector) && (evario = [evario])
         γ = multifit(sts, evario; sill = var(getproperty(dhx, ln.var)))
@@ -140,4 +143,9 @@ function multifit(
 
     vtable[!, :variomodel] = vfun
     VariographyResult(vname, vexp, vfit, vtable)
+end
+
+function LocalVariogram(dhx, varn; localpars, localpts, kwargs...)
+    spars = nnpars(localpars, localpts, dhx)
+    localvariography(dhx, spars, varn; kwargs...)
 end

@@ -19,6 +19,9 @@ import CoordRefSystems: lentype
 import NearestNeighbors: MinkowskiMetric
 import LocalAnisotropies: LocalKrigingModel, LocalIDWModel
 
+SpatialData = Union{AbstractGeoTable,AbstractDataFrame}
+coord_values(pt, axis) = ustrip(to(centroid(pt))[axis])
+
 include("dh/definitions.jl")
 include("dh/compositing.jl")
 include("dh/desurvey.jl")
@@ -61,5 +64,7 @@ export composite,
     nscore,
     back_nscore,
     AdvBallSearch,
-    localaniso_from_pts
+    localaniso_from_pts,
+    backflag,
+    LocalVariogram
 end

@@ -330,3 +330,31 @@ function regblks_to_subblks(ptable, model, doms_filter, output)
 
     model[!, Not(:idx)]
 end
+
+function backflag(model, pts, varn, radius, blksize, sblksize)
+    
+    ijks = countmap(model.IJK)
+    #sub = [key for (key, val) in ijks if val > 1]
+    reg = [key for (key, val) in ijks if val == 1]
+
+    ball = BallSearch(model.geometry, MetricBall(radius))
+    
+    inds = mapreduce(vcat, pts.geometry) do pt
+        p = centroid(pt)
+        search(p, ball)
+    end
+
+    inds = sort(unique(inds))
+    backflag = typeof(getproperty(model,varn))(undef,nrow(pts))
+    
+    for blk in Tables.rows(model[inds,:])
+        bsize = blk.IJK in reg ? blksize : sblksize
+        o = ustrip.(to(centroid(blk.geometry))) - (bsize./2)
+        m = o + bsize
+        bbox = Box(Point(o...),Point(m...))
+        bf = findall(h -> centroid(h) ∈ bbox, pts.geometry)
+        backflag[bf] .= blk[varn]
+    end
+    backflag
+end
+
