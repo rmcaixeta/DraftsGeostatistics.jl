@@ -130,7 +130,7 @@ function composite(
         for i = 1:size(tab, 1)
             f, t = tab[i, from], tab[i, to]
             vals = grp[(grp[!, to].>f).&(grp[!, from].<t), wcols]
-            size(vals, 1) == 0 && (tab[i, col] = missing)
+            size(vals, 1) == 0 && (tab[i, numcols] .= missing)
             size(vals, 1) == 0 && continue
             vals[1, from] = f
             vals[end, to] = t

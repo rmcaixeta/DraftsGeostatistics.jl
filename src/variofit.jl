@@ -15,18 +15,19 @@ e2 = DirectionalVariogram((0.,1.), dh, :Au, maxlag=20,nlags=10)
 structures = [SphericalVariogram, ExponentialVariogram]
 fitted_variograms = multifit(structures, [e1,e2])
 """
-function multifit(sts::AbstractVector, evario::AbstractVector; sill::Number = 1.0)
+function multifit(sts::AbstractVector, evario::AbstractVector; sill::Number = 1.0, fixnugget=-1.0)
     initguess = initialguess(sts, evario) #[cc1, cc2, r1_e1, r2_e1, r1_e2, r2_e2]
-    opt = optimize(x -> obj_function(x, evario, sts, sill), initguess)
+    opt = optimize(x -> obj_function(x, evario, sts, sill, fixnugget), initguess)
     res = Optim.minimizer(opt)
-    [model_from_pars(res, sill, sts, id = x)[1] for x = 1:length(evario)]
+    [model_from_pars(res, sill, sts; id = x, fixnugget)[1] for x = 1:length(evario)]
 end
 
-function model_from_pars(pars, vvar, sts; id = 1)
+function model_from_pars(pars, vvar, sts; id = 1, fixnugget=-1.0)
     nst = length(sts)
     cc = pars[1:nst]
     rang = pars[nst*id+1:nst*(id+1)]
-    ngt = 1 - sum(cc)
+    ngt = fixnugget < 0 ? 1 - sum(cc) : fixnugget
+    cc = fixnugget < 0 ? cc : (cc ./ sum(cc)) .* (1-ngt)
     model = (ngt * vvar) * NuggetEffect()
     for i = 1:nst
         model += sts[i](sill = cc[i] * vvar, range = rang[i])
@@ -37,11 +38,11 @@ end
 
 variovalues(v::EmpiricalVariogram) = (v.abscissas, v.ordinates, v.counts)
 
-function obj_function(pars, vario, sts, vvar)
+function obj_function(pars, vario, sts, vvar, fixnugget)
     mse = 0.0
     for (i, v) in enumerate(vario)
-        model, flag = model_from_pars(pars, vvar, sts, id = i)
-        penalty = flag ? vvar : 0.0
+        model, flag = model_from_pars(pars, vvar, sts; id = i, fixnugget)
+        penalty = flag ? vvar*100 : 0.0
 
         x, y, n = variovalues(v)
         x = x[n.>0]
@@ -110,7 +111,7 @@ function multifit(
     vartable::AbstractDataFrame,
     filters::AbstractVector;
     ns = false,
-    localpars = nothing, 
+    localpars = nothing,
     localpts = nothing,
 )
     enames = [v for v in names(vartable) if startswith(v, "evario")] #sort or constrain?
@@ -130,7 +131,7 @@ function multifit(
             pars = evalstr(ln[col])
             args1 = haskey(pars, :args) ? pars.args : []
             args2 = (dhx, ln.var) # modify for multivar case
-            kws2 = pars.fun == LocalVariogram ? (localpars=localpars, localpts=localpts) : [] 
+            kws2 = pars.fun == LocalVariogram ? (localpars=localpars, localpts=localpts) : []
             pars.fun(args1..., args2...; kws2..., pars.kwargs...)
         end
         !(evario isa AbstractVector) && (evario = [evario])

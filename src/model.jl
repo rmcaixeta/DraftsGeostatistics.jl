@@ -387,7 +387,7 @@ function extrapolate_borders(dh_; min_dip = 45.0, ignore_lower = [], ignore_uppe
     minz = minimum(dh.Z_TO)
 
     dh_valid = combine(groupby(dh_.trace, bh_), dp_ => first => dp_)
-    dh_valid = dh_valid[abs.(dh_valid[!, dp_]).>min_dip, bh_]
+    dh_valid = dh_valid[dh_valid[!, dp_].>min_dip, bh_]
     dh_valid = filter(row -> row[bh_] in dh_valid && !(row[bh_] in ignore_upper), dh)
 
     upper_extrap = groupby(dh_valid, bh_)
@@ -403,7 +403,7 @@ function extrapolate_borders(dh_; min_dip = 45.0, ignore_lower = [], ignore_uppe
     upper_extrap = upper_extrap[upper_extrap[!, :info_catg_].=="Interior", Not(:Z)]
 
     dh_valid = combine(groupby(dh_.trace, bh_), dp_ => last => dp_)
-    dh_valid = dh_valid[abs.(dh_valid[!, dp_]).>min_dip, bh_]
+    dh_valid = dh_valid[dh_valid[!, dp_].>min_dip, bh_]
     dh_valid = filter(row -> row[bh_] in dh_valid && !(row[bh_] in ignore_lower), dh)
 
     lower_extrap = groupby(dh_valid, bh_)

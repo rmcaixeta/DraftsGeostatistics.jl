@@ -201,6 +201,7 @@ function class_blk(dh, to_estim, ct, advsearch)
         end
         outval
     end
+    catgs = catgs isa AbstractVector ? catgs : [catgs]
 
     georef((RCATG = catgs, IJK = to_estim.IJK), grid)
 end
