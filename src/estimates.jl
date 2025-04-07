@@ -60,9 +60,9 @@ function grades_estim(group, evar, to_estim, allcomps, comps_filter, discr)
             )
             estfun = mapxt(
                 gridchunk ->
-                    comps |> InterpolateNeighbors(
+                    comps |> Select(evar) |> InterpolateNeighbors(
                         gridchunk,
-                        evar => estimator,
+                        model = estimator,
                         minneighbors = minneigh,
                         maxneighbors = maxneigh,
                         neighborhood = nhood;

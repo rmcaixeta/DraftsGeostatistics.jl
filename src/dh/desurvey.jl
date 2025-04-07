@@ -69,6 +69,11 @@ function gettrace(c, s)
 
     # merge collar coordinates to initial survey point
     collar[!, s.at] .= 0.0
+    esurv = unique(sort(survey, s.at), s.holeid; keep=:first)
+    esurv = esurv[esurv[!,s.at] .> 0, :]
+    esurv[!,s.at] .= 0
+    survey = vcat(survey,esurv)
+    sort!(survey, [s.holeid, s.at])
     trace = leftjoin(survey, collar, on = [s.holeid, s.at])
     sort!(trace, [s.holeid, s.at])
 end
