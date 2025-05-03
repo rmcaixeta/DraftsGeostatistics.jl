@@ -150,3 +150,13 @@ function LocalVariogram(dhx, varn; localpars, localpts, kwargs...)
     spars = nnpars(localpars, localpts, dhx)
     localvariography(dhx, spars, varn; kwargs...)
 end
+
+function join_anisotropic_variogram(γs, rotation_3d)
+    ngt, cc, mods = structures(γs[1])
+    mods = [typeof(m).name.wrapper for m in mods]
+    rang = mapreduce(vcat, γs) do γ
+        p = structures(γ)
+        mapreduce(γi -> range(γi), hcat, p[3])
+    end
+    NuggetEffect(ngt) + sum(cc[i] * mods[i](ranges = Tuple(vec(rang[:,1])), rotation = rotation_3d) for i in 1:length(cc))
+end
