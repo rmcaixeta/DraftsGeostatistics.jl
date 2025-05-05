@@ -182,27 +182,22 @@ end
 
 function class_blk(dh, to_estim, ct, advsearch)
     grid = to_estim.geometry
-    knn = KNearestSearch(dh, 1)
+    #knn = KNearestSearch(dh, 1)
     rangedist = ustrip(advsearch.ball.radii[1])
     catgs = mapreduce(vcat, grid) do blk
         p = centroid(blk)
-        n = search(p, knn)
-        d = evaluate(Euclidean(), ustrip.(to(p)), ustrip.(to(centroid(dh, n[1]))))
-        outval = NaN
-
-        if d <= rangedist
-            n = search(p, advsearch)
-            if length(n) == 3
-                dists = [
-                    evaluate(Euclidean(), ustrip.(to(p)), ustrip.(to(centroid(dh, ind)))) for ind in n
-                ]
-                outval = (sum(dists) < rangedist * 2) ? ct : NaN
-            end
+        n = search(p, advsearch)
+        outval = if length(n) == 3
+            dists = [
+                evaluate(Euclidean(), ustrip.(to(p)), ustrip.(to(centroid(dh, ind)))) for ind in n
+            ]
+            (sum(dists) < rangedist * 2) ? ct : NaN
+        else
+            NaN
         end
         outval
     end
     catgs = catgs isa AbstractVector ? catgs : [catgs]
-
     georef((RCATG = catgs, IJK = to_estim.IJK), grid)
 end
 

@@ -1,5 +1,9 @@
-
-
+#using GeoStats
+#using Distances
+#using NearestNeighbors
+#import NearestNeighbors: MinkowskiMetric
+#import CoordRefSystems: lentype
+#using DataFrames
 
 
 """
@@ -92,20 +96,23 @@ function AdvBallSearch(
     usesectors = nothing,
     rank_metric = :same,
 )
-    if maxpercategory != nothing
+    if !isnothing(maxpercategory)
         if !hasproperty(maxpercategory, :geotable)
-            maxpercategory =
-                (maxpercategory..., geotable = geotable[:, keys(maxpercategory)])
+            catg = keys(maxpercategory)[1]
+            maxpercategory = (maxpercategory..., geotable = geotable[:, catg])
         end
     end
     AdvBallSearch(domain(geotable), ball; k, maxpercategory, usesectors, rank_metric)
 end
 
-GeoStats.KBallSearch(domain, maxneighbors, neighborhood::AdvBallSearch) = neighborhood
+#AdvBallSearch(geoms, ball; kwargs...) = AdvBallSearch(GeometrySet(geoms), ball; kwargs...)
 
 AdvBallSearch(geoms; ball, kwargs...) = AdvBallSearch(geoms, ball; kwargs...)
 
 GeoStats.maxneighbors(method::AdvBallSearch) = method.k
+
+GeoStats.KBallSearch(domain, maxneighbors, neighborhood::AdvBallSearch) = neighborhood
+
 
 function GeoStats.searchdists!(
     neighbors,
@@ -118,101 +125,77 @@ function GeoStats.searchdists!(
     domain = method.domain
 
     inds = search(pₒ, BallSearch(domain, method.ball), mask = mask)
-    k = minimum([length(inds), length(neighbors), method.k])
+    k = minimum([length(inds), length(neighbors)])
     rank_metric = method.rank == :same ? metric(method.ball) : Euclidean()
+    cpₒ = ustrip.(to(pₒ))
     dists = [
-        evaluate(rank_metric, ustrip.(to(pₒ)), ustrip.(to(centroid(domain, ind)))) for
+        evaluate(rank_metric, cpₒ, ustrip.(to(centroid(domain, ind)))) for
         ind in inds
     ]
     sorted = sortperm(dists)
     inds = inds[sorted]
+    dists = dists[sorted] .* u
 
-    # initialize category and sectors constraints if necessary. `Dict` containers
-    # are here created with the information necessary for further filtering.
-    categs = initcategories(method, inds)
-    sectors = initsectors(method)
+    # apply maxpercategory and maxpersector if necessary
+    inds = apply_adv_filters(inds, method, pₒ)
 
     # loop each neighbor candidate
-    nneigh = 0
-    for (i, d) in zip(inds, dists)
-        # check category. if exceeded the category, the neighbor is ignored;
-        # otherwise categs[:count][col][cat[col]] is incremented in the end after
-        # k and maxpersector checks
-        if categs[:use]
-            cat, pass = Dict(), false
-            tab = method.maxpercategory.geotable
-            for col in keys(categs[:max])
-                col == :geotable && continue
-                cat[col] = tab[i, col]
-                categs[:count][col][cat[col]] >= categs[:max][col] && (pass = true)
-            end
-            pass && continue
-        end
-
-        # check sectors; if there are no space for neighbors in the indsector, it's
-        # ignored; otherwise sectors[:count][indsector] is incremented in the end
-        # after k checks
-        if sectors[:use]
-            centered = sectors[:rotmat]' * (centroid(domain, i) - pₒ) ./ method.ball.radii
-            indsector = getsector(centered, sectors[:n])
-            sectors[:count][indsector] >= sectors[:max] && continue
-        end
-
-        # add neighbor
-        nneigh += 1
-        neighbors[nneigh] = i
-        distances[nneigh] = d * u
-
-        nneigh == k && break
-
-        # add counters
-        sectors[:use] && (sectors[:count][indsector] += 1)
-        if categs[:use]
-            for col in keys(categs[:max])
-                col == :geotable && continue
-                categs[:count][col][cat[col]] += 1
-            end
-        end
+    nneigh = min(k, length(inds))
+    if nneigh > 0
+        neighbors[1:nneigh] .= inds[1:nneigh]
+        distances[1:nneigh] .= dists[1:nneigh]
     end
 
     nneigh
 end
 
 
+function apply_adv_filters(inds, meth, pₒ)
+    catgs, sectors = meth.maxpercategory, meth.usesectors
+    if isnothing(catgs) && isnothing(sectors)
+        inds
+    elseif isnothing(catgs)
+        apply_max_per_sector(inds, meth, pₒ)
+    elseif isnothing(sectors)
+        apply_max_per_catg(inds, catgs)
+    else
+        # i1 = apply_max_per_sector(inds, meth, pₒ)
+        # i2 = apply_max_per_catg(inds, catgs)
+        # intersect(i1, i2)
 
-# initialize categories constraints if necessary. e.g. if `maxpercategory =
-# (holeid = 2,)`, dict[:count][:holeid] will have all the possible values of
-# holeid, initiliazed to zero for further counting.
-function initcategories(meth, inds)
-    catgs = meth.maxpercategory
-    catgs == nothing && return Dict(:use => false)
-    tab = view(catgs.geotable, inds)
-    catvals = Dict(k => unique(tab[:, k]) for k in keys(catgs) if k != :geotable)
-    counter = Dict(k => Dict(zip(v, zeros(Int, length(v)))) for (k, v) in catvals)
-    Dict(:use => true, :max => catgs, :count => counter)
+        i1 = apply_max_per_catg(inds, catgs)
+        apply_max_per_catg(i1, catgs)
+    end
 end
 
-# initialize sectors constraints if necessary. this will create a counter for
-# each sector and a rotation matrix to reverse ellipsoid rotation (if an
-# ellipsoid search is used). a rotation noise is also added to simplify filtering.
-# it is used here because if data is regular and fall onto axes (e.g. cartesian
-# grid data), the sector filtering will return misleading results without it.
-function initsectors(meth)
-    pars = meth.usesectors
-    pars == nothing && return Dict(:use => false)
-    maxpersector = pars.max
-    N = embeddim(meth.domain)
-    ns = pars.n
-    N == 3 && pars.split && (ns *= 2)
-    rotmat = isnothing(meth.ball.rotation) ? I : meth.ball.rotation
-    Dict(
-        :use => true,
-        :count => zeros(Int, ns),
-        :rotmat => rotmat,
-        :max => maxpersector,
-        :n => (pars.n, pars.split),
-    )
+function apply_max_per_sector(inds, meth, pₒ)
+    dom = meth.domain
+    radii = meth.ball.radii
+    sectors = meth.usesectors
+    pars = (sectors.n, sectors.split)
+    rotmat = meth.ball.rotation'
+
+    indsector = [rotmat * (centroid(dom, ind) - pₒ) ./ radii for ind in inds]
+    indsector = [getsector(ind, pars) for ind in indsector]
+
+    newids = keep_first_n_dups(sectors.max, indsector)
+    inds[newids]
 end
+
+function apply_max_per_catg(inds, catgs)
+    maxval = [catgs[k] for k in keys(catgs) if k != :geotable][1]
+    newids = keep_first_n_dups(maxval, view(catgs.geotable, inds))
+    inds[newids]
+end
+
+function keep_first_n_dups(n, catgs)
+    tab = DataFrame((idx = 1:length(catgs), vals = catgs))
+    pos = combine(groupby(tab, :vals)) do df
+        df[1:min(n, nrow(df)), :]
+    end
+    sort(pos.idx)
+end
+
 
 # this function returns at which quadrant/octant the given centered coordinate
 # is. instead of making multiple if statements, a container is used to get the
@@ -220,12 +203,14 @@ end
 function getsector(v, n)
     angle = atan(v[2], v[1])
 
-    while angle < 0
-        angle += 2π
-    end
-    while angle >= 2π
-        angle -= 2π
-    end
+    #while angle < 0
+    #    angle += 2π
+    #end
+    #while angle >= 2π
+    #    angle -= 2π
+    #end
+    
+    angle = mod(angle, 2π)
 
     sector = 1 + (Int(floor(angle / (2π / n[1]))) % n[1])
     length(v) == 3 && n[2] && v[3] < 0 && (sector += n[1])

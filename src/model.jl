@@ -434,7 +434,7 @@ function localaniso_from_pts(comps; ratios=[1.0,1.0,0.5], ball=200)
     f = row -> -1 <= row[:SD] < 0
     sd = extract_intrusion_pts(comps, :info_catg_, ["Interior"], ["Exterior"]) |> GeoStats.Filter(f)
 
-    searcher = AdvBallSearch(sd, MetricBall(ball), k=3, maxpercategory=(; holeid=>1),rank_metric=:same)
+    searcher = AdvBallSearch(sd, MetricBall(ball), k=3, usesectors=(max=1,n=8,split=false), maxpercategory=(; holeid=>1),rank_metric=:same)
     geom = sd.geometry
 
     tri = mapreduce(vcat,geom) do pt

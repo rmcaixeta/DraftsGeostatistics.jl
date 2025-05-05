@@ -158,5 +158,5 @@ function join_anisotropic_variogram(γs, rotation_3d)
         p = structures(γ)
         mapreduce(γi -> range(γi), hcat, p[3])
     end
-    NuggetEffect(ngt) + sum(cc[i] * mods[i](ranges = Tuple(vec(rang[:,1])), rotation = rotation_3d) for i in 1:length(cc))
+    NuggetEffect(ngt) + sum(cc[i] * mods[i](ranges = Tuple(vec(rang[:,i])), rotation = rotation_3d) for i in 1:length(cc))
 end
