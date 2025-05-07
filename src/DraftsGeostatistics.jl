@@ -10,6 +10,7 @@ using LocalAnisotropies
 using NearestNeighbors
 using Optim
 using Printf
+using Setfield
 using StableRNGs
 using StaticArrays
 using StatsBase
@@ -31,6 +32,7 @@ include("parse_utils.jl")
 include("variofit.jl")
 include("search.jl")
 include("blocking.jl")
+include("cverror.jl")
 include("model.jl")
 include("estimates.jl")
 include("simul.jl")
@@ -67,5 +69,7 @@ export composite,
     AdvBallSearch,
     localaniso_from_pts,
     backflag,
-    LocalVariogram
+    LocalVariogram,
+    LeaveHoleOut,
+    local_cverror
 end

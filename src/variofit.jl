@@ -151,7 +151,7 @@ function LocalVariogram(dhx, varn; localpars, localpts, kwargs...)
     localvariography(dhx, spars, varn; kwargs...)
 end
 
-function join_anisotropic_variogram(γs, rotation_3d)
+function join_anisotropic_variogram(γs, rotation_3d=I)
     ngt, cc, mods = structures(γs[1])
     mods = [typeof(m).name.wrapper for m in mods]
     rang = mapreduce(vcat, γs) do γ
