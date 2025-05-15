@@ -22,10 +22,9 @@ end
 
 function simsvcat(ensembles...)
     domain = ensembles[1].domain
-    vars = ensembles[1].vars
-    fetch = ensembles[1].fetch
+    fetch_ = ensembles[1].fetch
     reals = mapreduce(e -> e.reals, vcat, ensembles)
-    Ensemble(domain, vars, reals, fetch)
+    Ensemble(domain, reals, fetch_)
 end
 
 
@@ -166,6 +165,7 @@ end
 # wgts = weight(comps, BlockWeighting(55,55,14))
 function nscore(gtab, evar; weights = nothing)
     data = getproperty(gtab, evar)
+    weights = isnothing(weights) || weights isa GeoWeights ? weights : GeoWeights(domain(gtab), weights)
     outvec, refd = nscore(data; weights)
     outtab = georef((; evar => outvec), gtab.geometry)
     outtab, refd
@@ -186,9 +186,9 @@ function back_nscore(sims::Ensemble, ireal::Int, evar, refd; georef = false)
     DataFrame((; evar => back_nscore(vals, refd)))
 end
 
-function back_nscore(gtab::AbstractGeoTable, evar, refd; georef = false)
+function back_nscore(gtab::AbstractGeoTable, evar, refd; as_geotable = true)
     vals = getproperty(gtab, evar)
-    georef ? georef((; evar => back_nscore(vals, refd)), sims.domain) :
+    as_geotable ? georef((; evar => back_nscore(vals, refd)), domain(gtab)) :
     DataFrame((; evar => back_nscore(vals, refd)))
 end
 
