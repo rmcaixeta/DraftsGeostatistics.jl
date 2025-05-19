@@ -162,39 +162,6 @@ function regblks_simulation(
 end
 
 
-# wgts = weight(comps, BlockWeighting(55,55,14))
-function nscore(gtab, evar; weights = nothing)
-    data = getproperty(gtab, evar)
-    weights = isnothing(weights) || weights isa GeoWeights ? weights : GeoWeights(domain(gtab), weights)
-    outvec, refd = nscore(data; weights)
-    outtab = georef((; evar => outvec), gtab.geometry)
-    outtab, refd
-end
-
-function nscore(data; weights = nothing)
-    so = TableTransforms.qsmooth(data)
-    ss =
-        isnothing(weights) ? so :
-        TableTransforms.qsmooth(quantile(data, weights, LinRange(0, 1, length(data))))
-    refd = TableTransforms.EmpiricalDistribution(ss)
-    TableTransforms.qtransform(so, refd, Normal()), refd
-end
-
-function back_nscore(sims::Ensemble, ireal::Int, evar, refd; georef = false)
-    vals = sims.reals[ireal][evar]
-    georef ? georef((; evar => back_nscore(vals, refd)), sims.domain) :
-    DataFrame((; evar => back_nscore(vals, refd)))
-end
-
-function back_nscore(gtab::AbstractGeoTable, evar, refd; as_geotable = true)
-    vals = getproperty(gtab, evar)
-    as_geotable ? georef((; evar => back_nscore(vals, refd)), domain(gtab)) :
-    DataFrame((; evar => back_nscore(vals, refd)))
-end
-
-back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Normal(), refd)
-
-
 #function validation_graphs(ptable)
 #	est_group = groupby(ptable, [:var,:model_domain])
 #

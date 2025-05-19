@@ -3,7 +3,7 @@ module DraftsGeostatistics
 using CSV
 using DataFrames
 using Distances
-using Distributions: Normal
+using Distributions: Normal, pdf, cdf
 using GeoStats
 using LinearAlgebra
 using LocalAnisotropies
@@ -29,47 +29,52 @@ include("dh/desurvey.jl")
 include("dh/mergetables.jl")
 include("dh/validations.jl")
 include("parse_utils.jl")
-include("variofit.jl")
+include("vario.jl")
 include("search.jl")
 include("blocking.jl")
 include("cverror.jl")
 include("model.jl")
 include("estimates.jl")
+include("nlinear.jl")
 include("simul.jl")
 
 
 export composite,
-    drillhole,
-    exportwarns,
-    read_dh,
-    write_dh,
-    Collar,
+    AdvBallSearch,
+    Collar,    
+    DrillHole,
+    LeaveHoleOut,
+    LocalVariogram,
     Interval,
     Survey,
-    DrillHole,
-    get_filters,
-    read_vartable,
-    multifit,
+
+    back_nscore,
+    backflag,
+    blocks_iterator,
     categorical_compositing,
+    cell_declus_tests,
+    dgm,
+    drillhole,
+    exportwarns,
     extract_contacts,
-    impute_missing_contacts,
-    extrapolate_borders,
     extract_intrusion_pts,
+    extrapolate_borders,
+    get_filters,
+    global_mean_validation,
+    impute_missing_contacts,
     intrusion_model,
     join_anisotropic_variogram,
+    local_cverror,
+    localaniso_from_pts,
+    merge_subblocks,
+    multifit,
+    nscore,
+    read_dh,
+    read_expvario,
+    read_vartable,
     regblks_estimation,
     regblks_simulation,
     regblks_to_subblks,
-    merge_subblocks,
-    global_mean_validation,
-    blocks_iterator,
-    cell_declus_tests,
-    nscore,
-    back_nscore,
-    AdvBallSearch,
-    localaniso_from_pts,
-    backflag,
-    LocalVariogram,
-    LeaveHoleOut,
-    local_cverror
+    write_dh,
+    write_expvario
 end

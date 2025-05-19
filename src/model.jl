@@ -381,11 +381,14 @@ end
 # length to extrapolation assumes it is subvertical, does not use survey angle to adjust it
 function extrapolate_borders(dh_; min_dip = 45.0, ignore_lower = [], ignore_upper = [])
     pars = dh_.pars
+    dip_negative = !pars.invdip
+    
     bh_, fr_, to_, dp_ = pars.holeid, pars.from, pars.to, pars.dip
     dh = dh_.table |> Sort([bh_, fr_])
     maxz = maximum(dh.Z_FROM)
     minz = minimum(dh.Z_TO)
 
+    dip_negative && (dh_valid[!, dp_] .*= -1)
     dh_valid = combine(groupby(dh_.trace, bh_), dp_ => first => dp_)
     dh_valid = dh_valid[dh_valid[!, dp_].>min_dip, bh_]
     dh_valid = filter(row -> row[bh_] in dh_valid && !(row[bh_] in ignore_upper), dh)

@@ -160,3 +160,33 @@ function join_anisotropic_variogram(γs, rotation_3d=I)
     end
     NuggetEffect(ngt) + sum(cc[i] * mods[i](ranges = Tuple(vec(rang[:,i])), rotation = rotation_3d) for i in 1:length(cc))
 end
+
+
+function write_expvario(outfile, ev)
+	tab = (counts=ev.counts, abscissas=ustrip.(ev.abscissas), ordinates=ev.ordinates)
+	CSV.write(outfile, tab)
+end
+
+
+function read_expvario(infile; distance=Euclidean(), estimator=GeoStatsFunctions.MatheronEstimator(), maxlag=-1)
+	tab = CSV.read(infile, DataFrame)
+	tab = maxlag > 0 ? tab[tab.abscissas .<= maxlag,:] : tab
+	EmpiricalVariogram(tab.counts, tab.abscissas * u"m", tab.ordinates, distance, estimator)
+end
+
+
+function variog_ns_to_orig(vn, nsvario, pipe_ns, cache_ns)
+	N = Normal(0,1)
+	y1=rand(N, 10^5)
+	o1 = getproperty(revert(pipe_ns, georef((; vn => y1)), cache_ns),vn)
+	s2=rand(N, 10^5)
+
+	newv = mapreduce(vcat, nsvario.ordinates) do v
+		p = 1-v
+		y2 = (y1 .* p) .+ (s2 .* sqrt(1 - (p^2)))
+		o2 = getproperty(revert(pipe_ns, georef((; vn => y2)), cache_ns),vn)
+		newv = (o1 .- o2) .^ 2
+		sum(newv)/(2*length(y1))
+	end
+	EmpiricalVariogram(nsvario.counts, nsvario.abscissas, newv, nsvario.distance, nsvario.estimator)
+end
