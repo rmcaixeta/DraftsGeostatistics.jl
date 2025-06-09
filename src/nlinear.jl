@@ -46,16 +46,17 @@ function find_valid(vec_of_vecs)
   setdiff(1:length(vec_of_vecs), nan_inf_positions)
 end
 
-function avg_normal(vn, n::Normal, cache; pipe=Quantile([:Au_ppm]), qs=QRANGE)
+function avg_normal(vn, n::Normal, cache; pipe=Quantile(), qs=QRANGE)
   if var(n) == 0
-    getproperty(revert(pipe, georef((; vn => [mean(n)])), cache), vn)
+    getproperty(revert(pipe, (; vn => [mean(n)]), cache), vn)
   else
-    dummy = georef((; vn => quantile(n, qs)))
+    dummy = (; vn => quantile(n, qs))
     vals = getproperty(revert(pipe, dummy, cache), vn)
     mean(vals)
   end
 end
 avg_normal(vn, n::Number, cache; pipe=0, qs=0) = 0
+avg_normal(vn, n::Missing, cache; pipe=0, qs=0) = missing
 
 function merge_normals(normals, weights)
   means = mean.(normals)
@@ -115,7 +116,7 @@ function find_R(data_var, f, coeffs; abs_tol=0.00001)
   end
 
   opt = optimize(r -> objective(r, exponent, sq_coeffs, variance), -1.0, 1.0, abs_tol=abs_tol)
-  minimizer(opt)[1]
+  Optim.minimizer(opt)[1]
 end
 
 function transform_dist(r, poly, coeffs)
@@ -138,7 +139,7 @@ function dgm(vals, f; kwargs...)
   dgm(vals, ns_vals, f; kwargs...)
 end
 
-function quantiles_dgm(vn, n::Normal, cache, f; pipe=Quantile([:Au_ppm]), qs=QRANGE)
+function quantiles_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
   if var(n) == 0
     getproperty(revert(pipe, georef((; vn => [mean(n) for i in qs])), cache), vn)
   else
@@ -148,7 +149,7 @@ function quantiles_dgm(vn, n::Normal, cache, f; pipe=Quantile([:Au_ppm]), qs=QRA
   end
 end
 
-function avg_normal_dgm(vn, n::Normal, cache, f; pipe=Quantile([:Au_ppm]), qs=QRANGE)
+function avg_normal_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
   dvals = quantiles_dgm(vn, n, cache, f; pipe, qs)
   mean(dvals)
 end

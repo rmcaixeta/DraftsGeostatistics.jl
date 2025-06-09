@@ -170,9 +170,9 @@ end
 
 function variog_ns_to_orig(vn, nsvario, pipe_ns, cache_ns)
   N = Normal(0, 1)
-  y1=rand(N, 10^5)
+  y1 = rand(N, 10^5)
   o1 = getproperty(revert(pipe_ns, georef((; vn => y1)), cache_ns), vn)
-  s2=rand(N, 10^5)
+  s2 = rand(N, 10^5)
 
   newv = mapreduce(vcat, nsvario.ordinates) do v
     p = 1-v

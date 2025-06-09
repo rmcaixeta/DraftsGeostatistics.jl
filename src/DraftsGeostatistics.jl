@@ -28,7 +28,8 @@ include("dh/compositing.jl")
 include("dh/desurvey.jl")
 include("dh/mergetables.jl")
 include("dh/validations.jl")
-include("parse_utils.jl")
+include("utils.jl")
+include("deprecated.jl")
 include("vario.jl")
 include("search.jl")
 include("blocking.jl")
@@ -37,6 +38,7 @@ include("model.jl")
 include("estimates.jl")
 include("nlinear.jl")
 include("simul.jl")
+include("declus.jl")
 
 export composite,
   AdvBallSearch,
@@ -46,11 +48,13 @@ export composite,
   LocalVariogram,
   Interval,
   Survey,
+  avg_normal,
   back_nscore,
   backflag,
-  blocks_iterator,
   categorical_compositing,
   cell_declus_tests,
+  class_blk,
+  coord_table,
   dgm,
   drillhole,
   exportwarns,
@@ -64,15 +68,20 @@ export composite,
   join_anisotropic_variogram,
   local_cverror,
   localaniso_from_pts,
+  make_subblocks,
+  merge_normals,
   merge_subblocks,
   multifit,
+  nreal_partitions,
   nscore,
+  quantiles_dgm,
   read_dh,
   read_expvario,
   read_vartable,
-  regblks_estimation,
+  #regblks_estimation,
   regblks_simulation,
   regblks_to_subblks,
+  variog_ns_to_orig,
   write_dh,
   write_expvario
 end

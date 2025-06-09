@@ -4,58 +4,6 @@ using Transducers
 using DataFrames
 using StaticArrays
 
-## Block weighting advanced
-oweight(object, method::BlockWeighting, offsets::Int; kwargs...) = oweight(domain(object), method, offsets; kwargs...)
-
-function oweight(domain::Domain, method::BlockWeighting, offsets::Int; mode="simple")
-  orig = boundingbox(domain).min
-  offd = -1 .* method.sides ./ (offsets + 1)
-  weights = zeros(nelements(domain) + 1)
-  dims = embeddim(domain)
-  offrange = mode == "prod" ? Iterators.product([0:offsets for d in 1:dims]...) : 0:offsets
-
-  for d in offrange
-    opt = orig |> Translate((d .* offd)...)
-    odomain = vcat(GeometrySet([opt]), domain)
-    p = partition(odomain, BlockPartition(method.sides))
-    for s in indices(p)
-      sn = filter(i -> i != 1, s)
-      weights[sn] .+= 1 / length(sn)
-    end
-  end
-
-  weights = weights[2:end] ./ length(0:offsets)
-
-  GeoWeights(domain, weights)
-end
-
-function cell_declus_tests_i(comps::AbstractGeoTable, evar, spacing, offsets, mode)
-  w = oweight(comps, BlockWeighting(spacing...), offsets; mode)
-  (; :test => string(spacing), Symbol("mean_$evar") => mean(getproperty(comps, evar), w))
-end
-
-function cell_declus_tests(comps::AbstractGeoTable, evar, iterator; offsets=3, mode="simple")
-  outvar = Symbol("mean_$evar")
-  fun = Transducers.Map(spacing -> cell_declus_tests_i(comps, evar, spacing, offsets, mode))
-  res = foldxt(vcat, fun, iterator)
-  DataFrame(res) |> Sort(outvar)
-end
-
-function blocks_iterator(; x=nothing, y=nothing, xy=nothing, z=nothing)
-  is2d = isnothing(z)
-  issquare = !isnothing(xy)
-  isrect = !isnothing(x) && !isnothing(y)
-  !issquare && !isrect && error("invalid input")
-
-  ranges = is2d && issquare ? (xy,) : is2d ? (x, y) : issquare ? (xy, z) : (x, y, z)
-  iterators = Iterators.product(ranges...)
-
-  mapreduce(vcat, iterators) do i
-    #println(i)
-    is2d && issquare ? (i[1], i[1]) : is2d ? (i[1], i[2]) : issquare ? (i[1], i[1], i[2]) : (i[1], i[2], i[3])
-  end
-end
-
 ## SUBBLOCK INTERFACE
 
 function get_spacing(obj; coords=[:x, :y, :z])
@@ -326,3 +274,48 @@ function backflag(model, pts, varn, radius, blksize, sblksize)
   end
   backflag
 end
+
+### refactored
+function make_subblocks(
+  centroids::AbstractMatrix,
+  parentsize::Tuple,
+  discretization::Tuple=(4, 4, 4);
+  ijk=nothing,
+  gtab=true
+)
+  nx, ny, nz = discretization
+  n_sub = nx * ny * nz
+  n_blocks = size(centroids, 1)
+  ijks = isnothing(ijk) ? repeat(1:n_blocks, inner=n_sub) : ijk
+
+  x_offs = LinRange(-0.5 + 1/(2*nx), 0.5 - 1/(2*nx), nx)
+  y_offs = LinRange(-0.5 + 1/(2*ny), 0.5 - 1/(2*ny), ny)
+  z_offs = LinRange(-0.5 + 1/(2*nz), 0.5 - 1/(2*nz), nz)
+
+  offs = hcat(([x, y, z] for x in x_offs for y in y_offs for z in z_offs)...)
+  out = reshape(centroids, n_blocks, 1, 3) .+ reshape(offs, 1, n_sub, 3) .* reshape(collect(parentsize), 1, 1, 3)
+
+  cnames = [:x, :y, :z]
+  out = (; zip(cnames, eachcol(reshape(out, :, 3)))..., :IJK => ijks)
+  gtab ? georef(out, cnames) : out
+end
+
+function make_subblocks(domain::Domain, discretization::Tuple=(4, 4, 4); ijk=nothing)
+  parentsize = ustrip.(domain.spacing)
+  centroids = mapreduce(vcat, domain) do blk
+    hcat(ustrip.(to(centroid(blk)))...)
+  end
+  make_subblocks(centroids, parentsize, discretization; ijk)
+end
+
+function make_subblocks(tab::AbstractGeoTable, discretization::Tuple=(4, 4, 4); ijk=:IJK)
+  ijks = hasproperty(tab, ijk) ? getproperty(tab, ijk) : nothing
+  make_subblocks(domain(tab), discretization; ijk=ijks)
+end
+
+# coord_to_ijk
+# cartid(coord, c) = Int((coord - morigin[c]) ./ spacing_[c] .+ 1)
+# ijks = LinearIndices((1:dims20[1],1:dims20[2],1:dims20[3]))
+# ijks20c = [CartesianIndex(cartid(ref[i,:x],1), cartid(ref[i,:y],2), cartid(ref[i,:z],3)) for i in 1:nrow(ref)]
+# ijks20 = [ijks[i] for i in ijks20c]
+# ref.IJK = ijks20

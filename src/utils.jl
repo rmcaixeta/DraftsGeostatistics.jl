@@ -20,3 +20,13 @@ function read_vartable(path::String)
   sort_cols = [x for x in ("var", "model_domain", "pass") if x in names(vartable)]
   vartable |> Sort(sort_cols...)
 end
+
+function coord_table(geotable)
+  dom = domain(geotable)
+  cnames = [:x, :y, :z]
+  points = [centroid(dom, i) for i in 1:nelements(dom)]
+  ccolumns = map(1:3) do d
+    [ustrip(to(p)[d]) for p in points]
+  end
+  (; zip(cnames, ccolumns)...)
+end

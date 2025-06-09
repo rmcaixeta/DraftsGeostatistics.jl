@@ -87,6 +87,7 @@ GeoStats.KBallSearch(domain, maxneighbors, neighborhood::AdvBallSearch) = neighb
 AdvBallSearch(geoms; ball, kwargs...) = AdvBallSearch(geoms, ball; kwargs...)
 
 GeoStats.maxneighbors(method::AdvBallSearch) = method.k
+GeoStats.radii(method::AdvBallSearch) = radii(method.ball)
 
 function GeoStats.searchdists!(neighbors, distances, pₒ::Point, method::AdvBallSearch; mask=nothing)
   u = unit(lentype(pₒ))
