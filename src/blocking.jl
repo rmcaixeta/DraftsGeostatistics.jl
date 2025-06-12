@@ -275,6 +275,28 @@ function backflag(model, pts, varn, radius, blksize, sblksize)
   backflag
 end
 
+function backflag(model, pts, varn, radius, bsize)
+  ball = BallSearch(model.geometry, MetricBall(radius))
+
+  inds = mapreduce(vcat, pts.geometry) do pt
+    p = centroid(pt)
+    search(p, ball)
+  end
+
+  inds = sort(unique(inds))
+  #backflag = typeof(getproperty(model, varn))(undef, nrow(pts))
+  backflag = Vector{Float64}(undef, nrow(pts))
+
+  for blk in Tables.rows(model[inds, :])
+    o = ustrip.(to(centroid(blk.geometry))) - (bsize ./ 2)
+    m = o + bsize
+    bbox = Box(Point(o...), Point(m...))
+    bf = findall(h -> centroid(h) ∈ bbox, pts.geometry)
+    backflag[bf] .= blk[varn]
+  end
+  backflag
+end
+
 ### refactored
 function make_subblocks(
   centroids::AbstractMatrix,
@@ -286,13 +308,16 @@ function make_subblocks(
   nx, ny, nz = discretization
   n_sub = nx * ny * nz
   n_blocks = size(centroids, 1)
-  ijks = isnothing(ijk) ? repeat(1:n_blocks, inner=n_sub) : ijk
+  ijks = isnothing(ijk) ? repeat(1:n_blocks, inner=n_sub) : repeat(ijk, inner=n_sub)
 
-  x_offs = LinRange(-0.5 + 1/(2*nx), 0.5 - 1/(2*nx), nx)
-  y_offs = LinRange(-0.5 + 1/(2*ny), 0.5 - 1/(2*ny), ny)
-  z_offs = LinRange(-0.5 + 1/(2*nz), 0.5 - 1/(2*nz), nz)
+  x_offs = range(-0.5 + 1/(2*nx), 0.5 - 1/(2*nx), length=nx)
+  y_offs = range(-0.5 + 1/(2*ny), 0.5 - 1/(2*ny), length=ny)
+  z_offs = range(-0.5 + 1/(2*nz), 0.5 - 1/(2*nz), length=nz)
 
-  offs = hcat(([x, y, z] for x in x_offs for y in y_offs for z in z_offs)...)
+  xx = repeat(x_offs, inner=ny*nz)
+  yy = repeat(y_offs, inner=nz, outer=nx)
+  zz = repeat(z_offs, outer=nx*ny)
+  offs = hcat(xx, yy, zz)
   out = reshape(centroids, n_blocks, 1, 3) .+ reshape(offs, 1, n_sub, 3) .* reshape(collect(parentsize), 1, 1, 3)
 
   cnames = [:x, :y, :z]
@@ -301,7 +326,8 @@ function make_subblocks(
 end
 
 function make_subblocks(domain::Domain, discretization::Tuple=(4, 4, 4); ijk=nothing)
-  parentsize = ustrip.(domain.spacing)
+  spacing = domain isa SubDomain ? parent(domain).spacing : domain.spacing
+  parentsize = ustrip.(spacing)
   centroids = mapreduce(vcat, domain) do blk
     hcat(ustrip.(to(centroid(blk)))...)
   end

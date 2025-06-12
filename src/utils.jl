@@ -30,3 +30,23 @@ function coord_table(geotable)
   end
   (; zip(cnames, ccolumns)...)
 end
+
+
+
+## Parquet
+# using DuckDB
+# using Parquet2: writefile
+
+# function read_parquet(file_path; cols="*")
+# 	con = DBInterface.connect(DuckDB.DB, ":memory:")
+# 	tab = DBInterface.execute(con,
+# 	"""
+# 	SELECT $cols
+# 	FROM '$(file_path)'
+# 	""") |> skipmissing |> DataFrame
+# 	DBInterface.close!(con)
+# 	tab
+# end
+
+# write_parquet(outfile, tab) = writefile(outfile, tab)
+## writefile("outfile.parquet", tab)

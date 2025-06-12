@@ -1,7 +1,7 @@
 const QRANGE = LinRange(0.002, 0.998, 200)
 
 # wgts = weight(comps, BlockWeighting(55,55,14))
-function nscore(gtab, evar; weights=nothing)
+function nscore(gtab::AbstractGeoTable, evar; weights=nothing)
   data = getproperty(gtab, evar)
   weights = isnothing(weights) || weights isa GeoWeights ? weights : GeoWeights(domain(gtab), weights)
   outvec, refd = nscore(data; weights)
@@ -15,6 +15,8 @@ function nscore(data; weights=nothing)
   refd = TableTransforms.EmpiricalDistribution(ss)
   TableTransforms.qtransform(so, refd, Normal()), refd
 end
+
+nscore(refd::TableTransforms.EmpiricalDistribution, data) = TableTransforms.qtransform(data, refd, Normal())
 
 function back_nscore(sims::Ensemble, evar, refd)
   reals = mapreduce(vcat, 1:length(sims)) do i
@@ -128,9 +130,16 @@ function dgm(vals, ns_vals, f; nhermites=100, abs_tol=0.00001)
   std_vals = (vals .- mean(vals)) ./ std(vals)
   poly = hermite_polynomial_values(nhermites, ns_vals)
   coeffs = hermite_constants(std_vals, ns_vals, poly)
-  r = find_R(var(std_vals), f, coeffs; abs_tol)
-  out = transform_dist(r, poly, coeffs)
-  std(vals) .* out .+ mean(vals)
+  
+  if f isa AbstractVector
+    mapreduce(vcat, f) do f_i
+      find_R(var(std_vals), f_i, coeffs; abs_tol)
+    end
+  else
+    r = find_R(var(std_vals), f, coeffs; abs_tol)
+    out = transform_dist(r, poly, coeffs)
+    std(vals) .* out .+ mean(vals)
+  end
 end
 
 function dgm(vals, f; kwargs...)
