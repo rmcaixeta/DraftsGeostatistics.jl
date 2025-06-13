@@ -18,7 +18,7 @@ using Transducers
 using Unitful
 import CoordRefSystems: lentype
 import NearestNeighbors: MinkowskiMetric
-import LocalAnisotropies: LocalKrigingModel, LocalIDWModel
+import LocalAnisotropies: LocalKrigingModel, LocalIDWModel, mw_estimator, localpair, nvals
 
 SpatialData = Union{AbstractGeoTable,AbstractDataFrame}
 coord_values(pt, axis) = ustrip(to(centroid(pt))[axis])
@@ -61,6 +61,7 @@ export composite,
   extract_contacts,
   extract_intrusion_pts,
   extrapolate_borders,
+  fval_la,
   get_filters,
   global_mean_validation,
   impute_missing_contacts,

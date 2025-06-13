@@ -78,27 +78,26 @@ function merge_normals(normals, weights)
   end
 end
 
-function hermite_polynomial_values(k, datavals)
-  h = mapreduce(hcat, datavals) do y
-    vals = [1.0, -y]
-    for i in 2:(k - 1)
-      v = -1/sqrt(i) * y * vals[end] - sqrt((i-1)/i) * vals[end - 1]
-      push!(vals, v)
-    end
-    vals
+function hermite_polynomial_values(nk, datavals)
+  H = ones(nk+1, length(datavals))
+  H[2,:] .= -1 * datavals
+
+  for k in 3:(nk+1)
+      H[k,:] .= -1/sqrt(k-1) .* datavals .* H[k-1,:] .- sqrt((k-2)/(k-1)) .* H[k-2,:]
   end
+  H
 end
 
-function hermite_constants(std_vals, ns_vals, poly)
+function hermite_constants(vals, ns_vals, poly)
   nhermites = size(poly, 1)
   N = Normal(0, 1)
 
   coeffs = mapreduce(vcat, 1:nhermites) do i
     if i == 1
-      mean(std_vals)
+      mean(vals)
     else
-      h = mapreduce(vcat, 2:length(std_vals)) do j
-        (std_vals[j - 1] - std_vals[j]) / sqrt(i-1) * poly[i - 1, j] * pdf(N, ns_vals[j])
+      h = mapreduce(vcat, 2:length(vals)) do j
+        (vals[j - 1] - vals[j]) / sqrt(i-1) * poly[i - 1, j] * pdf(N, ns_vals[j])
       end
       sum(h)
     end
@@ -106,13 +105,13 @@ function hermite_constants(std_vals, ns_vals, poly)
   coeffs
 end
 
-function find_R(data_var, f, coeffs; abs_tol=0.00001)
+function find_R(data_var::Float64, f::Float64, coeffs; abs_tol=0.00001)
   variance = data_var * f
-  sq_coeffs = [i^2 for i in coeffs]
-  exponent = [2*i for i in 1:length(coeffs)]
+  sq_coeffs = [i^2 for i in coeffs[2:end]]
+  exponent = [2*i for i in 1:length(coeffs[2:end])]
 
   objective(r, exponent, sq_coeffs, variance) = begin
-    vector = [r^exponent[i] for i in 1:length(exponent)]
+    vector = [r^e for e in exponent]
     dot_product = dot(vector, sq_coeffs)
     abs(dot_product - variance)
   end
@@ -121,25 +120,28 @@ function find_R(data_var, f, coeffs; abs_tol=0.00001)
   Optim.minimizer(opt)[1]
 end
 
+function find_R(vals::AbstractVector, ns_vals::AbstractVector, f; nhermites=100, abs_tol=0.00001)
+  poly = hermite_polynomial_values(nhermites, ns_vals)
+  coeffs = hermite_constants(vals, ns_vals, poly)
+  var_coeffs = sum([x^2 for x in coeffs[2:end]])
+  println("Variance from coeffs: $var_coeffs")
+
+  fvals = f isa AbstractVector ? f : [f]
+  mapreduce(vcat, fvals) do f_i
+    find_R(var(vals), f_i, coeffs; abs_tol)
+  end
+end
+
 function transform_dist(r, poly, coeffs)
   changed_constants = [r ^ (2*(p-1)) * coeffs[p] for p in 1:length(coeffs)]
   sum(changed_constants .* poly, dims=1)[:]
 end
 
 function dgm(vals, ns_vals, f; nhermites=100, abs_tol=0.00001)
-  std_vals = (vals .- mean(vals)) ./ std(vals)
   poly = hermite_polynomial_values(nhermites, ns_vals)
-  coeffs = hermite_constants(std_vals, ns_vals, poly)
-  
-  if f isa AbstractVector
-    mapreduce(vcat, f) do f_i
-      find_R(var(std_vals), f_i, coeffs; abs_tol)
-    end
-  else
-    r = find_R(var(std_vals), f, coeffs; abs_tol)
-    out = transform_dist(r, poly, coeffs)
-    std(vals) .* out .+ mean(vals)
-  end
+  coeffs = hermite_constants(vals, ns_vals, poly)
+  r = find_R(var(vals), f, coeffs; abs_tol)
+  transform_dist(r, poly, coeffs)
 end
 
 function dgm(vals, f; kwargs...)
@@ -163,3 +165,18 @@ function avg_normal_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
   mean(dvals)
 end
 avg_normal_dgm(vn, n::Number, cache, f; pipe=0, qs=0) = 0
+
+
+function fval_la(block_size, γorig, lp, discretization=(4,4,4))
+  origin, finish = Point(0,0,0),Point(block_size...)
+  subb = [b/d for (b,d) in zip(block_size,discretization)]
+  dgrid = CartesianGrid(origin,finish,Tuple(subb))
+
+  samps = centroid.(dgrid)
+  γl = [mw_estimator(nothing, γorig, localpair(lp,i)).fun for i in 1:nvals(lp)]
+  fvals = mapreduce(vcat,γl) do γi
+    avgvar = [γi(p1,p2) for p1 in samps, p2 in samps]
+    sill(γorig)-mean(avgvar)
+  end
+  mean(fvals)
+end
