@@ -13,10 +13,10 @@ function nscore(data; weights=nothing)
   so = TableTransforms.qsmooth(data)
   ss = isnothing(weights) ? so : TableTransforms.qsmooth(quantile(data, weights, LinRange(0, 1, length(data))))
   refd = TableTransforms.EmpiricalDistribution(ss)
-  TableTransforms.qtransform(so, refd, Normal()), refd
+  modqtransform(so, refd, Normal()), refd
 end
 
-nscore(refd::TableTransforms.EmpiricalDistribution, data) = TableTransforms.qtransform(data, refd, Normal())
+nscore(refd::TableTransforms.EmpiricalDistribution, data) = modqtransform(data, refd, Normal())
 
 function back_nscore(sims::Ensemble, evar, refd)
   reals = mapreduce(vcat, 1:length(sims)) do i
@@ -32,7 +32,20 @@ function back_nscore(gtab::AbstractGeoTable, evar, refd; as_geotable=true)
   DataFrame((; evar => back_nscore(vals, refd)))
 end
 
-back_nscore(vals::AbstractVector, refd) = TableTransforms.qtransform(vals, Normal(), refd)
+back_nscore(vals::AbstractVector, refd) = modqtransform(vals, Normal(), refd)
+
+function modqtransform(values, origin, target)
+  # avoid evaluating the quantile at 0 or 1
+  nv = length(values)
+  smin, smax = LinRange(0.0, 1.0, nv+2)[[2,nv+1]]
+  pmin = min(0.0 + 1e-3, smin)
+  pmax = max(1.0 - 1e-3, smax)
+  map(values) do sample
+    prob = cdf(origin, sample)
+    quantile(target, clamp(prob, pmin, pmax))
+  end
+end
+
 
 function find_valid(vec_of_vecs)
   nan_inf_positions = Int[]
@@ -120,11 +133,11 @@ function find_R(data_var::Float64, f::Float64, coeffs; abs_tol=0.00001)
   Optim.minimizer(opt)[1]
 end
 
-function find_R(vals::AbstractVector, ns_vals::AbstractVector, f; nhermites=100, abs_tol=0.00001)
+function find_R(vals::AbstractVector, ns_vals::AbstractVector, f; nhermites=100, abs_tol=0.00001, verbose=false)
   poly = hermite_polynomial_values(nhermites, ns_vals)
   coeffs = hermite_constants(vals, ns_vals, poly)
   var_coeffs = sum([x^2 for x in coeffs[2:end]])
-  println("Variance from coeffs: $var_coeffs")
+  verbose && println("Variance from coeffs: $var_coeffs")
 
   fvals = f isa AbstractVector ? f : [f]
   mapreduce(vcat, fvals) do f_i
@@ -133,8 +146,8 @@ function find_R(vals::AbstractVector, ns_vals::AbstractVector, f; nhermites=100,
 end
 
 function transform_dist(r, poly, coeffs)
-  changed_constants = [r ^ (2*(p-1)) * coeffs[p] for p in 1:length(coeffs)]
-  sum(changed_constants .* poly, dims=1)[:]
+  changed_constants = [r ^ (p-1) * coeffs[p] for p in 1:length(coeffs)]
+  sort(sum(changed_constants .* poly, dims=1)[:])
 end
 
 function dgm(vals, ns_vals, f; nhermites=100, abs_tol=0.00001)
@@ -145,9 +158,10 @@ function dgm(vals, ns_vals, f; nhermites=100, abs_tol=0.00001)
 end
 
 function dgm(vals, f; kwargs...)
-  ns_vals = georef((data=vals,)) |> Quantile(:data)
-  ns_vals = ns_vals.data
-  dgm(vals, ns_vals, f; kwargs...)
+  svals = sort(vals)
+  nsvals = LinRange(0.0, 1.0, length(svals)+2)
+  nsvals = quantile(Normal(), nsvals)[2:length(svals)+1]
+  dgm(svals, nsvals, f; kwargs...)
 end
 
 function quantiles_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
@@ -157,6 +171,15 @@ function quantiles_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
     dummy = georef((; vn => quantile(n, qs)))
     vals = getproperty(revert(pipe, dummy, cache), vn)
     dgm(vals, quantile(Normal(0, 1), qs), f; nhermites=100, abs_tol=0.00001)
+  end
+end
+
+function quantiles_dgm(n::Normal, refd, f; qs=QRANGE)
+  if var(n) == 0
+    back_nscore([mean(n) for i in qs], refd)
+  else
+    vals = back_nscore(quantile(n, qs), refd)
+    dgm(vals, f; nhermites=100, abs_tol=0.00001)
   end
 end
 
@@ -171,7 +194,10 @@ function fval_la(block_size, γorig, lp, discretization=(4,4,4))
   origin, finish = Point(0,0,0),Point(block_size...)
   subb = [b/d for (b,d) in zip(block_size,discretization)]
   dgrid = CartesianGrid(origin,finish,Tuple(subb))
+  fval_la(dgrid, γorig, lp)
+end
 
+function fval_la(dgrid::Domain, γorig, lp)
   samps = centroid.(dgrid)
   γl = [mw_estimator(nothing, γorig, localpair(lp,i)).fun for i in 1:nvals(lp)]
   fvals = mapreduce(vcat,γl) do γi

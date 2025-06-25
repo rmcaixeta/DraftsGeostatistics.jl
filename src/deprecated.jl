@@ -329,3 +329,30 @@ function blocks_iterator(; x=nothing, y=nothing, xy=nothing, z=nothing)
     is2d && issquare ? (i[1], i[1]) : is2d ? (i[1], i[2]) : issquare ? (i[1], i[1], i[2]) : (i[1], i[2], i[3])
   end
 end
+
+
+function find_ratio(panelavg::Float64, refdist; abs_tol=0.00001, qs=QRANGE)
+  
+  objective(r, refdist, panelavg) = begin
+    sdev = (1 - (r ^ 2)) ^ 0.5
+    dss = Normal(r * nscore(refdist, [panelavg])[1], sdev)
+		dss = back_nscore(quantile(dss, qs), refdist)
+    (mean(dss) - panelavg)^2
+  end
+
+  opt = optimize(r -> objective(r, refdist, panelavg), 0.01, 0.99, abs_tol=abs_tol)
+  Optim.minimizer(opt)[1]
+end
+
+function find_ratio(panelavg::Float64, panelavg_ns::Float64, refdist; abs_tol=0.00001, qs=QRANGE)
+  
+  objective(r, refdist, panelavg, panelavg_ns) = begin
+    sdev = (1 - (r ^ 2)) ^ 0.5
+    dss = Normal(r * panelavg_ns, sdev)
+		dss = back_nscore(quantile(dss, qs), refdist)
+    (mean(dss) - panelavg)^2
+  end
+
+  opt = optimize(r -> objective(r, refdist, panelavg, panelavg_ns), 0.01, 0.99, abs_tol=abs_tol)
+  Optim.minimizer(opt)[1]
+end

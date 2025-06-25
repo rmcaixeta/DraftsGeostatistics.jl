@@ -308,7 +308,7 @@ function make_subblocks(
   nx, ny, nz = discretization
   n_sub = nx * ny * nz
   n_blocks = size(centroids, 1)
-  ijks = isnothing(ijk) ? repeat(1:n_blocks, inner=n_sub) : repeat(ijk, inner=n_sub)
+  ijks = isnothing(ijk) ? repeat(1:n_blocks, outer=n_sub) : repeat(ijk, outer=n_sub)
 
   x_offs = range(-0.5 + 1/(2*nx), 0.5 - 1/(2*nx), length=nx)
   y_offs = range(-0.5 + 1/(2*ny), 0.5 - 1/(2*ny), length=ny)
