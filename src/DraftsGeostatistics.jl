@@ -4,11 +4,13 @@ using CSV
 using DataFrames
 using Distances
 using Distributions: Normal, pdf, cdf
+using DuckDB
 using GeoStats
 using LinearAlgebra
 using LocalAnisotropies
 using NearestNeighbors
 using Optim
+using Parquet2: writefile
 using Printf
 using Setfield
 using StableRNGs
@@ -78,11 +80,13 @@ export composite,
   quantiles_dgm,
   read_dh,
   read_expvario,
+  read_table,
   read_vartable,
   #regblks_estimation,
   regblks_simulation,
   regblks_to_subblks,
   variog_ns_to_orig,
   write_dh,
-  write_expvario
+  write_expvario,
+  write_parquet
 end

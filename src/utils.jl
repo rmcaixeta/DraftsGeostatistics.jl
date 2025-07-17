@@ -48,5 +48,25 @@ end
 # 	tab
 # end
 
-# write_parquet(outfile, tab) = writefile(outfile, tab)
-## writefile("outfile.parquet", tab)
+
+
+function read_table(file_path; cols="*")
+    con = DBInterface.connect(DuckDB.DB, ":memory:")
+    df = DBInterface.execute(con,
+        """
+        SELECT $cols
+        FROM '$(file_path)'
+        """) |> DataFrame
+    DBInterface.close!(con)
+
+    # for col in names(df)
+    #     col_data = df[!, col]
+    #     if Union{Missing} <: eltype(col_data) && !any(ismissing, col_data)
+    #         df[!, col] = collect(skipmissing(col_data))
+    #     end
+    # end
+
+    df
+end
+
+write_parquet(outfile, tab) = writefile(outfile, tab)
