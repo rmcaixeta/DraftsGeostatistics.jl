@@ -50,12 +50,12 @@ end
 
 
 
-function read_table(file_path; cols="*")
+function read_table(file_path; cols="*", extra="")
     con = DBInterface.connect(DuckDB.DB, ":memory:")
     df = DBInterface.execute(con,
         """
         SELECT $cols
-        FROM '$(file_path)'
+        FROM '$(file_path)' $extra
         """) |> DataFrame
     DBInterface.close!(con)
 
@@ -67,6 +67,11 @@ function read_table(file_path; cols="*")
     # end
 
     df
+end
+
+function write_parquet(outfile, geotab::GeoTable)
+  tab = hcat(DataFrame(coord_table(geotab)), DataFrame(values(geotab)))
+  writefile(outfile, tab)
 end
 
 write_parquet(outfile, tab) = writefile(outfile, tab)
