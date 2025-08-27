@@ -330,13 +330,11 @@ function blocks_iterator(; x=nothing, y=nothing, xy=nothing, z=nothing)
   end
 end
 
-
 function find_ratio(panelavg::Float64, refdist; abs_tol=0.00001, qs=QRANGE)
-  
   objective(r, refdist, panelavg) = begin
     sdev = (1 - (r ^ 2)) ^ 0.5
     dss = Normal(r * nscore(refdist, [panelavg])[1], sdev)
-		dss = back_nscore(quantile(dss, qs), refdist)
+    dss = back_nscore(quantile(dss, qs), refdist)
     (mean(dss) - panelavg)^2
   end
 
@@ -345,11 +343,10 @@ function find_ratio(panelavg::Float64, refdist; abs_tol=0.00001, qs=QRANGE)
 end
 
 function find_ratio(panelavg::Float64, panelavg_ns::Float64, refdist; abs_tol=0.00001, qs=QRANGE)
-  
   objective(r, refdist, panelavg, panelavg_ns) = begin
     sdev = (1 - (r ^ 2)) ^ 0.5
     dss = Normal(r * panelavg_ns, sdev)
-		dss = back_nscore(quantile(dss, qs), refdist)
+    dss = back_nscore(quantile(dss, qs), refdist)
     (mean(dss) - panelavg)^2
   end
 

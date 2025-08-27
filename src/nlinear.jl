@@ -37,7 +37,7 @@ back_nscore(vals::AbstractVector, refd) = modqtransform(vals, Normal(), refd)
 function modqtransform(values, origin, target)
   # avoid evaluating the quantile at 0 or 1
   nv = length(values)
-  smin, smax = LinRange(0.0, 1.0, nv+2)[[2,nv+1]]
+  smin, smax = LinRange(0.0, 1.0, nv+2)[[2, nv+1]]
   pmin = min(0.0 + 1e-3, smin)
   pmax = max(1.0 - 1e-3, smax)
   map(values) do sample
@@ -45,7 +45,6 @@ function modqtransform(values, origin, target)
     quantile(target, clamp(prob, pmin, pmax))
   end
 end
-
 
 function find_valid(vec_of_vecs)
   nan_inf_positions = Int[]
@@ -93,10 +92,10 @@ end
 
 function hermite_polynomial_values(nk, datavals)
   H = ones(nk+1, length(datavals))
-  H[2,:] .= -1 * datavals
+  H[2, :] .= -1 * datavals
 
-  for k in 3:(nk+1)
-      H[k,:] .= -1/sqrt(k-1) .* datavals .* H[k-1,:] .- sqrt((k-2)/(k-1)) .* H[k-2,:]
+  for k in 3:(nk + 1)
+    H[k, :] .= -1/sqrt(k-1) .* datavals .* H[k - 1, :] .- sqrt((k-2)/(k-1)) .* H[k - 2, :]
   end
   H
 end
@@ -160,7 +159,7 @@ end
 function dgm(vals, f; kwargs...)
   svals = sort(vals)
   nsvals = LinRange(0.0, 1.0, length(svals)+2)
-  nsvals = quantile(Normal(), nsvals)[2:length(svals)+1]
+  nsvals = quantile(Normal(), nsvals)[2:(length(svals) + 1)]
   dgm(svals, nsvals, f; kwargs...)
 end
 
@@ -189,20 +188,85 @@ function avg_normal_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
 end
 avg_normal_dgm(vn, n::Number, cache, f; pipe=0, qs=0) = 0
 
-
-function fval_la(block_size, γorig, lp, discretization=(4,4,4))
-  origin, finish = Point(0,0,0),Point(block_size...)
-  subb = [b/d for (b,d) in zip(block_size,discretization)]
-  dgrid = CartesianGrid(origin,finish,Tuple(subb))
+function fval_la(block_size, γorig, lp, discretization=(4, 4, 4))
+  origin, finish = Point(0, 0, 0), Point(block_size...)
+  subb = [b/d for (b, d) in zip(block_size, discretization)]
+  dgrid = CartesianGrid(origin, finish, Tuple(subb))
   fval_la(dgrid, γorig, lp)
 end
 
 function fval_la(dgrid::Domain, γorig, lp)
   samps = centroid.(dgrid)
-  γl = [mw_estimator(nothing, γorig, localpair(lp,i)).fun for i in 1:nvals(lp)]
-  fvals = mapreduce(vcat,γl) do γi
-    avgvar = [γi(p1,p2) for p1 in samps, p2 in samps]
+  γl = [mw_estimator(nothing, γorig, localpair(lp, i)).fun for i in 1:nvals(lp)]
+  fvals = mapreduce(vcat, γl) do γi
+    avgvar = [γi(p1, p2) for p1 in samps, p2 in samps]
     sill(γorig)-mean(avgvar)
   end
   mean(fvals)
+end
+
+struct GMM_pars
+  w::AbstractArray
+  μ::AbstractArray
+  Σ::AbstractArray
+end
+
+function gmm_conditional(gmm::GMM_pars, x1)
+  weights, means, covs = (gmm.w, gmm.μ, gmm.Σ)
+  n = length(weights)
+  cond_means = Vector{Float64}(undef, n)
+  cond_stds = Vector{Float64}(undef, n)
+  numerators = Vector{Float64}(undef, n)
+
+  for i in 1:length(weights)
+    w = weights[i]
+    m = means[i, :]
+    C = covs[i]
+
+    mu1, mu2 = m[1], m[2]
+    sigma11 = C[1, 1]
+    sigma22 = C[2, 2]
+    sigma12 = C[1, 2]
+
+    cond_means[i] = mu2 + sigma12/sigma11 * (x1 - mu1)
+    cond_stds[i] = sqrt(sigma22 - sigma12^2/sigma11)
+    numerators[i] = w * pdf(Normal(mu1, sqrt(sigma11)), x1)
+  end
+
+  cond_weights = numerators ./ sum(numerators)
+  cond_weights, cond_means, cond_stds
+end
+
+function conditional_cdf(x2, weights, means, stds)
+  mapreduce(+, 1:length(weights)) do i
+    weights[i] * cdf(Normal(means[i], stds[i]), x2)
+  end
+end
+
+function dt_forward(x1_arr, x2_arr, gmm::GMM_pars)
+  mapreduce(vcat, zip(x1_arr, x2_arr)) do (x1, x2)
+    w, m, s = gmm_conditional(gmm, x1)
+    cdf2 = conditional_cdf(x2, w, m, s)
+    quantile(Normal(), cdf2)
+  end
+end
+
+function dt_backward(y1_arr, y2_arr, gmm::GMM_pars; bounds=(-5.0, 5.0))
+  mapreduce(vcat, zip(y1_arr, y2_arr)) do (y1, y2)
+    p = cdf(Normal(), y2)
+    w, m, s = gmm_conditional(gmm, y1)
+    f(x) = conditional_cdf(x, w, m, s) - p
+    find_zero(f, bounds, Bisection())
+  end
+end
+
+function quantiles_dgm(n::Normal, dt, gmm::GMM_pars, refd, f; qs=QRANGE)
+  if var(n) == 0
+    bt1 = dt_backward([mean(dt) for i in qs], [mean(n) for i in qs], gmm)
+    back_nscore(bt1, refd)
+  else
+    bt1 = dt_backward(quantile(dt, qs), quantile(n, qs), gmm)
+    vals = back_nscore(bt1, refd)
+    dgm(vals, f; nhermites=100, abs_tol=0.00001)
+  end
 end

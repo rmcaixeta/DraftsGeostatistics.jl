@@ -31,8 +31,6 @@ function coord_table(geotable)
   (; zip(cnames, ccolumns)...)
 end
 
-
-
 ## Parquet
 # using DuckDB
 # using Parquet2: writefile
@@ -48,25 +46,25 @@ end
 # 	tab
 # end
 
-
-
 function read_table(file_path; cols="*", extra="")
-    con = DBInterface.connect(DuckDB.DB, ":memory:")
-    df = DBInterface.execute(con,
-        """
-        SELECT $cols
-        FROM '$(file_path)' $extra
-        """) |> DataFrame
-    DBInterface.close!(con)
+  con = DBInterface.connect(DuckDB.DB, ":memory:")
+  df = DBInterface.execute(
+    con,
+    """
+    SELECT $cols
+    FROM '$(file_path)' $extra
+    """
+  ) |> DataFrame
+  DBInterface.close!(con)
 
-    # for col in names(df)
-    #     col_data = df[!, col]
-    #     if Union{Missing} <: eltype(col_data) && !any(ismissing, col_data)
-    #         df[!, col] = collect(skipmissing(col_data))
-    #     end
-    # end
+  # for col in names(df)
+  #     col_data = df[!, col]
+  #     if Union{Missing} <: eltype(col_data) && !any(ismissing, col_data)
+  #         df[!, col] = collect(skipmissing(col_data))
+  #     end
+  # end
 
-    df
+  df
 end
 
 function write_parquet(outfile, geotab::GeoTable)

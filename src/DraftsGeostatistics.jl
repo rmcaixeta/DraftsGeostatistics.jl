@@ -12,6 +12,7 @@ using NearestNeighbors
 using Optim
 using Parquet2: writefile
 using Printf
+using Roots
 using Setfield
 using StableRNGs
 using StaticArrays
@@ -46,6 +47,7 @@ export composite,
   AdvBallSearch,
   Collar,
   DrillHole,
+  GMM_pars,
   LeaveHoleOut,
   LocalVariogram,
   Interval,
@@ -59,6 +61,8 @@ export composite,
   coord_table,
   dgm,
   drillhole,
+  dt_backward,
+  dt_forward,
   exportwarns,
   extract_contacts,
   extract_intrusion_pts,
