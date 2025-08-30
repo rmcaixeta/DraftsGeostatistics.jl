@@ -23,28 +23,14 @@ end
 
 function coord_table(geotable)
   dom = domain(geotable)
-  cnames = [:x, :y, :z]
+  nd = embeddim(dom)
+  cnames = [:x, :y, :z][1:nd]
   points = [centroid(dom, i) for i in 1:nelements(dom)]
-  ccolumns = map(1:3) do d
+  ccolumns = map(1:nd) do d
     [ustrip(to(p)[d]) for p in points]
   end
   (; zip(cnames, ccolumns)...)
 end
-
-## Parquet
-# using DuckDB
-# using Parquet2: writefile
-
-# function read_parquet(file_path; cols="*")
-# 	con = DBInterface.connect(DuckDB.DB, ":memory:")
-# 	tab = DBInterface.execute(con,
-# 	"""
-# 	SELECT $cols
-# 	FROM '$(file_path)'
-# 	""") |> skipmissing |> DataFrame
-# 	DBInterface.close!(con)
-# 	tab
-# end
 
 function read_table(file_path; cols="*", extra="")
   con = DBInterface.connect(DuckDB.DB, ":memory:")
@@ -56,19 +42,12 @@ function read_table(file_path; cols="*", extra="")
     """
   ) |> DataFrame
   DBInterface.close!(con)
-
-  # for col in names(df)
-  #     col_data = df[!, col]
-  #     if Union{Missing} <: eltype(col_data) && !any(ismissing, col_data)
-  #         df[!, col] = collect(skipmissing(col_data))
-  #     end
-  # end
-
   df
 end
 
-function write_parquet(outfile, geotab::GeoTable)
-  tab = hcat(DataFrame(coord_table(geotab)), DataFrame(values(geotab)))
+function write_parquet(outfile, geotab::GeoTable; save_coords=true)
+  vals = DataFrame(values(geotab))
+  tab = save_coords ? hcat(DataFrame(coord_table(geotab)), vals) : vals
   writefile(outfile, tab)
 end
 

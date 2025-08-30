@@ -1,10 +1,17 @@
 const QRANGE = LinRange(0.002, 0.998, 200)
 
+struct GMM_pars
+  w::AbstractArray
+  μ::AbstractArray
+  Σ::AbstractArray
+end
+
 # wgts = weight(comps, BlockWeighting(55,55,14))
 function nscore(gtab::AbstractGeoTable, evar; weights=nothing)
   data = getproperty(gtab, evar)
-  weights = isnothing(weights) || weights isa GeoWeights ? weights : GeoWeights(domain(gtab), weights)
-  outvec, refd = nscore(data; weights)
+  wgts = weights isa Union{String,Symbol} ? getproperty(gtab, Symbol(weights)) : weights
+  wgts = isnothing(wgts) || wgts isa GeoWeights ? wgts : GeoWeights(domain(gtab), wgts)
+  outvec, refd = nscore(data; weights=wgts)
   outtab = georef((; evar => outvec), gtab.geometry)
   outtab, refd
 end
@@ -37,7 +44,7 @@ back_nscore(vals::AbstractVector, refd) = modqtransform(vals, Normal(), refd)
 function modqtransform(values, origin, target)
   # avoid evaluating the quantile at 0 or 1
   nv = length(values)
-  smin, smax = LinRange(0.0, 1.0, nv+2)[[2, nv+1]]
+  smin, smax = LinRange(0.0, 1.0, nv + 2)[[2, nv + 1]]
   pmin = min(0.0 + 1e-3, smin)
   pmax = max(1.0 - 1e-3, smax)
   map(values) do sample
@@ -46,31 +53,15 @@ function modqtransform(values, origin, target)
   end
 end
 
-function find_valid(vec_of_vecs)
-  nan_inf_positions = Int[]
-
-  for (i, vec) in enumerate(vec_of_vecs)
-    for (j, value) in enumerate(vec)
-      if isnan(value) || isinf(value)
-        push!(nan_inf_positions, i)
-      end
-    end
-  end
-  nan_inf_positions = unique(nan_inf_positions)
-  setdiff(1:length(vec_of_vecs), nan_inf_positions)
+function avg_normal(n::Normal, refd; qs=QRANGE)
+  input = var(n) == 0 ? [mean(n)] : quantile(n, qs)
+  mean(back_nscore(input, refd))
 end
 
-function avg_normal(vn, n::Normal, cache; pipe=Quantile(), qs=QRANGE)
-  if var(n) == 0
-    getproperty(revert(pipe, (; vn => [mean(n)]), cache), vn)
-  else
-    dummy = (; vn => quantile(n, qs))
-    vals = getproperty(revert(pipe, dummy, cache), vn)
-    mean(vals)
-  end
+function avg_normal(n::Normal, dt, gmm::Union{GMM_pars,AbstractGeoTable}, refd; qs=QRANGE)
+  bt1 = var(n) == 0 ? dt_backward([dt], [mean(n)], gmm) : dt_backward([dt for i in qs], quantile(n, qs), gmm)
+  mean(back_nscore(bt1, refd))
 end
-avg_normal(vn, n::Number, cache; pipe=0, qs=0) = 0
-avg_normal(vn, n::Missing, cache; pipe=0, qs=0) = missing
 
 function merge_normals(normals, weights)
   means = mean.(normals)
@@ -83,19 +74,16 @@ function merge_normals(normals, weights)
     m = sum(weights .* means) / sw
     v = sum(weights .* (vars .+ (means .- m) .^ 2)) / sw
 
-    #m = mean(means)
-    #v = mean(vars) + mean(means .^2) - m^2
-
-    Normal(m, v ^ 0.5)
+    Normal(m, v^0.5)
   end
 end
 
 function hermite_polynomial_values(nk, datavals)
-  H = ones(nk+1, length(datavals))
+  H = ones(nk + 1, length(datavals))
   H[2, :] .= -1 * datavals
 
   for k in 3:(nk + 1)
-    H[k, :] .= -1/sqrt(k-1) .* datavals .* H[k - 1, :] .- sqrt((k-2)/(k-1)) .* H[k - 2, :]
+    H[k, :] .= -1 / sqrt(k - 1) .* datavals .* H[k - 1, :] .- sqrt((k - 2) / (k - 1)) .* H[k - 2, :]
   end
   H
 end
@@ -109,7 +97,7 @@ function hermite_constants(vals, ns_vals, poly)
       mean(vals)
     else
       h = mapreduce(vcat, 2:length(vals)) do j
-        (vals[j - 1] - vals[j]) / sqrt(i-1) * poly[i - 1, j] * pdf(N, ns_vals[j])
+        (vals[j - 1] - vals[j]) / sqrt(i - 1) * poly[i - 1, j] * pdf(N, ns_vals[j])
       end
       sum(h)
     end
@@ -120,7 +108,7 @@ end
 function find_R(data_var::Float64, f::Float64, coeffs; abs_tol=0.00001)
   variance = data_var * f
   sq_coeffs = [i^2 for i in coeffs[2:end]]
-  exponent = [2*i for i in 1:length(coeffs[2:end])]
+  exponent = [2 * i for i in 1:length(coeffs[2:end])]
 
   objective(r, exponent, sq_coeffs, variance) = begin
     vector = [r^e for e in exponent]
@@ -145,7 +133,7 @@ function find_R(vals::AbstractVector, ns_vals::AbstractVector, f; nhermites=100,
 end
 
 function transform_dist(r, poly, coeffs)
-  changed_constants = [r ^ (p-1) * coeffs[p] for p in 1:length(coeffs)]
+  changed_constants = [r^(p - 1) * coeffs[p] for p in 1:length(coeffs)]
   sort(sum(changed_constants .* poly, dims=1)[:])
 end
 
@@ -158,19 +146,9 @@ end
 
 function dgm(vals, f; kwargs...)
   svals = sort(vals)
-  nsvals = LinRange(0.0, 1.0, length(svals)+2)
+  nsvals = LinRange(0.0, 1.0, length(svals) + 2)
   nsvals = quantile(Normal(), nsvals)[2:(length(svals) + 1)]
   dgm(svals, nsvals, f; kwargs...)
-end
-
-function quantiles_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
-  if var(n) == 0
-    getproperty(revert(pipe, georef((; vn => [mean(n) for i in qs])), cache), vn)
-  else
-    dummy = georef((; vn => quantile(n, qs)))
-    vals = getproperty(revert(pipe, dummy, cache), vn)
-    dgm(vals, quantile(Normal(0, 1), qs), f; nhermites=100, abs_tol=0.00001)
-  end
 end
 
 function quantiles_dgm(n::Normal, refd, f; qs=QRANGE)
@@ -182,15 +160,20 @@ function quantiles_dgm(n::Normal, refd, f; qs=QRANGE)
   end
 end
 
-function avg_normal_dgm(vn, n::Normal, cache, f; pipe=Quantile(), qs=QRANGE)
-  dvals = quantiles_dgm(vn, n, cache, f; pipe, qs)
-  mean(dvals)
+function quantiles_dgm(n::Normal, dt, gmm::Union{GMM_pars,AbstractGeoTable}, refd, f; qs=QRANGE)
+  if var(n) == 0
+    bt1 = dt_backward([mean(dt) for i in qs], [mean(n) for i in qs], gmm)
+    back_nscore(bt1, refd)
+  else
+    bt1 = dt_backward(sample(dt, length(qs), replace=true), quantile(n, qs), gmm)
+    vals = back_nscore(bt1, refd)
+    dgm(vals, f; nhermites=100, abs_tol=0.00001)
+  end
 end
-avg_normal_dgm(vn, n::Number, cache, f; pipe=0, qs=0) = 0
 
 function fval_la(block_size, γorig, lp, discretization=(4, 4, 4))
   origin, finish = Point(0, 0, 0), Point(block_size...)
-  subb = [b/d for (b, d) in zip(block_size, discretization)]
+  subb = [b / d for (b, d) in zip(block_size, discretization)]
   dgrid = CartesianGrid(origin, finish, Tuple(subb))
   fval_la(dgrid, γorig, lp)
 end
@@ -200,18 +183,25 @@ function fval_la(dgrid::Domain, γorig, lp)
   γl = [mw_estimator(nothing, γorig, localpair(lp, i)).fun for i in 1:nvals(lp)]
   fvals = mapreduce(vcat, γl) do γi
     avgvar = [γi(p1, p2) for p1 in samps, p2 in samps]
-    sill(γorig)-mean(avgvar)
+    sill(γorig) - mean(avgvar)
   end
   mean(fvals)
 end
 
-struct GMM_pars
-  w::AbstractArray
-  μ::AbstractArray
-  Σ::AbstractArray
+function sample_gmm(gmm::GMM_pars, n::Int)
+  K, d = size(gmm.μ)
+  priors = Distributions.Categorical(gmm.w)
+  mvns = [MvNormal(gmm.μ[k, :], Symmetric(gmm.Σ[k])) for k in 1:K]
+  mapreduce(x -> rand(mvns[rand(priors)]), hcat, 1:n)
 end
 
-function gmm_conditional(gmm::GMM_pars, x1)
+function bic(logL, data, ncompo)
+  n, d = size(data)
+  n_params = (ncompo - 1) + ncompo * d + ncompo * d * (d + 1) ÷ 2
+  -2 * logL + n_params * log(n)
+end
+
+function gmm_conditional(gmm::GMM_pars, x; first_feature::Bool=true)
   weights, means, covs = (gmm.w, gmm.μ, gmm.Σ)
   n = length(weights)
   cond_means = Vector{Float64}(undef, n)
@@ -224,13 +214,17 @@ function gmm_conditional(gmm::GMM_pars, x1)
     C = covs[i]
 
     mu1, mu2 = m[1], m[2]
-    sigma11 = C[1, 1]
-    sigma22 = C[2, 2]
-    sigma12 = C[1, 2]
+    sigma11, sigma22, sigma12 = C[1, 1], C[2, 2], C[1, 2]
 
-    cond_means[i] = mu2 + sigma12/sigma11 * (x1 - mu1)
-    cond_stds[i] = sqrt(sigma22 - sigma12^2/sigma11)
-    numerators[i] = w * pdf(Normal(mu1, sqrt(sigma11)), x1)
+    if first_feature
+      cond_means[i] = mu2 + sigma12 / sigma11 * (x - mu1)
+      cond_stds[i] = sqrt(sigma22 - sigma12^2 / sigma11)
+      numerators[i] = w * pdf(Normal(mu1, sqrt(sigma11)), x)
+    else
+      cond_means[i] = mu1 + sigma12 / sigma22 * (x - mu2)
+      cond_stds[i] = sqrt(sigma11 - sigma12^2 / sigma22)
+      numerators[i] = w * pdf(Normal(mu2, sqrt(sigma22)), x)
+    end
   end
 
   cond_weights = numerators ./ sum(numerators)
@@ -251,22 +245,33 @@ function dt_forward(x1_arr, x2_arr, gmm::GMM_pars)
   end
 end
 
-function dt_backward(y1_arr, y2_arr, gmm::GMM_pars; bounds=(-5.0, 5.0))
+function dt_backward(y1_arr, y2_arr, gmm::GMM_pars; bounds=(-5.0, 5.0), method=Roots.Bisection())
+  # method Roots.Brent() possible too if preferred
   mapreduce(vcat, zip(y1_arr, y2_arr)) do (y1, y2)
     p = cdf(Normal(), y2)
     w, m, s = gmm_conditional(gmm, y1)
     f(x) = conditional_cdf(x, w, m, s) - p
-    find_zero(f, bounds, Bisection())
+    if isnothing(bounds)
+      μ_mix = sum(w .* m)
+      σ_mix = sqrt(sum(w .* (s .^ 2 .+ (m .- μ_mix) .^ 2)))
+      fzero(f, quantile(Normal(μ_mix, σ_mix), p))
+    else
+      find_zero(f, bounds, method)
+    end
   end
 end
 
-function quantiles_dgm(n::Normal, dt, gmm::GMM_pars, refd, f; qs=QRANGE)
-  if var(n) == 0
-    bt1 = dt_backward([mean(dt) for i in qs], [mean(n) for i in qs], gmm)
-    back_nscore(bt1, refd)
-  else
-    bt1 = dt_backward(quantile(dt, qs), quantile(n, qs), gmm)
-    vals = back_nscore(bt1, refd)
-    dgm(vals, f; nhermites=100, abs_tol=0.00001)
-  end
+function dt_backward(y1_arr, y2_arr, ref::AbstractGeoTable; power=1.8, neighs=4)
+  dom = georef((; :y1 => y1_arr, :y2 => y2_arr), (:y1, :y2))
+  pred = ref |> InterpolateNeighbors(domain(dom), model=IDW(power), maxneighbors=neighs) |> values
+  pred |> values |> first
+end
+
+function dt_table(gmm::GMM_pars; bounds=(-4.5, 4.5), vals=500)
+  yi = LinRange(bounds..., vals)
+  yij = Iterators.product(yi, yi)
+  tcat = (a, b) -> (vcat(a[1], b[1]), vcat(a[2], b[2]))
+  y1, y2 = reduce(tcat, yij)
+  x2 = dt_backward(y1, y2, gmm, bounds=nothing)
+  georef((; :y1 => y1, :y2 => y2, :x2 => x2), (:y1, :y2))
 end

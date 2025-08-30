@@ -387,7 +387,7 @@ function localaniso_from_pts(comps; ratios=[1.0, 1.0, 0.5], ball=200)
     MetricBall(ball),
     k=3,
     usesectors=(max=1, n=8, split=false),
-    maxpercategory=(; holeid=>1),
+    maxpercategory=(; holeid => 1),
     rank_metric=:same
   )
   geom = sd.geometry

@@ -310,13 +310,13 @@ function make_subblocks(
   n_blocks = size(centroids, 1)
   ijks = isnothing(ijk) ? repeat(1:n_blocks, outer=n_sub) : repeat(ijk, outer=n_sub)
 
-  x_offs = range(-0.5 + 1/(2*nx), 0.5 - 1/(2*nx), length=nx)
-  y_offs = range(-0.5 + 1/(2*ny), 0.5 - 1/(2*ny), length=ny)
-  z_offs = range(-0.5 + 1/(2*nz), 0.5 - 1/(2*nz), length=nz)
+  x_offs = range(-0.5 + 1 / (2 * nx), 0.5 - 1 / (2 * nx), length=nx)
+  y_offs = range(-0.5 + 1 / (2 * ny), 0.5 - 1 / (2 * ny), length=ny)
+  z_offs = range(-0.5 + 1 / (2 * nz), 0.5 - 1 / (2 * nz), length=nz)
 
-  xx = repeat(x_offs, inner=ny*nz)
+  xx = repeat(x_offs, inner=ny * nz)
   yy = repeat(y_offs, inner=nz, outer=nx)
-  zz = repeat(z_offs, outer=nx*ny)
+  zz = repeat(z_offs, outer=nx * ny)
   offs = hcat(xx, yy, zz)
   out = reshape(centroids, n_blocks, 1, 3) .+ reshape(offs, 1, n_sub, 3) .* reshape(collect(parentsize), 1, 1, 3)
 

@@ -3,7 +3,7 @@ module DraftsGeostatistics
 using CSV
 using DataFrames
 using Distances
-using Distributions: Normal, pdf, cdf
+using Distributions: MvNormal, Normal, pdf, cdf
 using DuckDB
 using GeoStats
 using LinearAlgebra
@@ -20,6 +20,7 @@ using StatsBase
 using Transducers
 using Unitful
 import CoordRefSystems: lentype
+import Distributions
 import NearestNeighbors: MinkowskiMetric
 import LocalAnisotropies: LocalKrigingModel, LocalIDWModel, mw_estimator, localpair, nvals
 
@@ -63,6 +64,7 @@ export composite,
   drillhole,
   dt_backward,
   dt_forward,
+  dt_table,
   exportwarns,
   extract_contacts,
   extract_intrusion_pts,

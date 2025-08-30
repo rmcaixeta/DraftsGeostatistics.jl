@@ -26,7 +26,7 @@ function model_from_pars(pars, vvar, sts; id=1, fixnugget=-1.0)
   cc = pars[1:nst]
   rang = pars[(nst * id + 1):(nst * (id + 1))]
   ngt = fixnugget < 0 ? 1 - sum(cc) : fixnugget
-  cc = fixnugget < 0 ? cc : (cc ./ sum(cc)) .* (1-ngt)
+  cc = fixnugget < 0 ? cc : (cc ./ sum(cc)) .* (1 - ngt)
   model = (ngt * vvar) * NuggetEffect()
   for i in 1:nst
     model += sts[i](sill=cc[i] * vvar, range=rang[i])
@@ -41,7 +41,7 @@ function obj_function(pars, vario, sts, vvar, fixnugget)
   mse = 0.0
   for (i, v) in enumerate(vario)
     model, flag = model_from_pars(pars, vvar, sts; id=i, fixnugget)
-    penalty = flag ? vvar*100 : 0.0
+    penalty = flag ? vvar * 100 : 0.0
 
     x, y, n = variovalues(v)
     x = x[n .> 0]
@@ -168,18 +168,36 @@ function read_expvario(infile; distance=Euclidean(), estimator=GeoStatsFunctions
   EmpiricalVariogram(tab.counts, tab.abscissas * u"m", tab.ordinates, distance, estimator)
 end
 
-function variog_ns_to_orig(vn, nsvario, pipe_ns, cache_ns)
+function variog_ns_to_orig(nsvario, refd; normalize=false)
   N = Normal(0, 1)
   y1 = rand(N, 10^5)
-  o1 = getproperty(revert(pipe_ns, georef((; vn => y1)), cache_ns), vn)
+  o1 = back_nscore(y1, refd)
   s2 = rand(N, 10^5)
+  norm_f = normalize ? var(refd.values) : 1.0
 
   newv = mapreduce(vcat, nsvario.ordinates) do v
-    p = 1-v
+    p = 1 - v
     y2 = (y1 .* p) .+ (s2 .* sqrt(1 - (p^2)))
-    o2 = getproperty(revert(pipe_ns, georef((; vn => y2)), cache_ns), vn)
+    o2 = back_nscore(y2, refd)
     newv = (o1 .- o2) .^ 2
-    sum(newv)/(2*length(y1))
+    sum(newv) / (2 * length(newv) * norm_f)
+  end
+  EmpiricalVariogram(nsvario.counts, nsvario.abscissas, newv, nsvario.distance, nsvario.estimator)
+end
+
+function variog_ns_to_orig(nsvario, gmm, refd; normalize=false)
+  N = Normal(0, 1)
+  t1, y1, s2 = [rand(N, 10^5) for i in 1:3]
+  o1 = back_nscore(dt_backward(t1, y1, gmm), refd)
+  norm_f = normalize ? var(refd.values) : 1.0
+
+  newv = mapreduce(vcat, nsvario.ordinates) do v
+    p = 1 - v
+    y2 = (y1 .* p) .+ (s2 .* sqrt(1 - (p^2)))
+    t2 = rand(N, 10^5)
+    o2 = back_nscore(dt_backward(t2, y2, gmm), refd)
+    newv = (o1 .- o2) .^ 2
+    sum(newv) / (2 * length(newv) * norm_f)
   end
   EmpiricalVariogram(nsvario.counts, nsvario.abscissas, newv, nsvario.distance, nsvario.estimator)
 end
