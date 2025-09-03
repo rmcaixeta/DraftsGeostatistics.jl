@@ -1,9 +1,4 @@
 
-using GeoStats
-using Transducers
-using DataFrames
-using StaticArrays
-
 ## SUBBLOCK INTERFACE
 
 function get_spacing(obj; coords=[:x, :y, :z])

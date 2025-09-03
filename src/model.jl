@@ -1,7 +1,15 @@
 
 ## MAIN WORKFLOW: categorical_compositing() -> extract_intrusion_pts() -> intrusion_model()
 
-function categorical_compositing(dh_, var, interior, exterior; filters=[("Exterior", 5.0), ("Interior", 2.1)])
+function categorical_compositing(
+  dh_,
+  var,
+  interior,
+  exterior;
+  code_var=:code_catg_,
+  info_var=:info_catg_,
+  filters=[("Exterior", 5.0), ("Interior", 2.1)]
+)
   pars = dh_.pars
   bh_, fr_, to_ = pars.holeid, pars.from, pars.to
   dh = dh_.table |> Sort(bh_, fr_)
@@ -15,19 +23,17 @@ function categorical_compositing(dh_, var, interior, exterior; filters=[("Exteri
   catgtype[interior_filter] .= "Interior"
   catgtype[exterior_filter] .= "Exterior"
 
-  ignore_filter = [x for x in 1:nvals if !(x in vcat(interior_filter, exterior_filter))]
-
   # table grouped by codes
   code = set_interval_code_(dh, catgtype, bh_)
-  dht = hcat(dh, DataFrame((code_catg_=code, info_catg_=catgtype)))
-  grp = groupby(dht, [:code_catg_, :info_catg_, bh_])
+  dht = hcat(dh, DataFrame((; code_var=>code, info_var=>catgtype)))
+  grp = groupby(dht, [code_var, info_var, bh_])
   grp = combine(grp, fr_ => minimum => fr_, to_ => maximum => to_)
   grp.LENGTH = grp[!, to_] - grp[!, fr_]
 
   # return here if ignored is wanted and no filters of intervals
 
   ## ignore ignored
-  grp = grp[grp[!, :info_catg_] .!= "Ignored", :]
+  grp = grp[grp[!, info_var] .!= "Ignored", :]
 
   # get upper and lower bounds of the hole, to not filter
   holeids = unique(grp[!, bh_])
@@ -36,15 +42,15 @@ function categorical_compositing(dh_, var, interior, exterior; filters=[("Exteri
 
   # apply filters for small intervals
   for (ctype, cleng) in filters
-    filter_t = (grp[!, :info_catg_] .== ctype) .& (grp[!, :LENGTH] .< cleng)
+    filter_t = (grp[!, info_var] .== ctype) .& (grp[!, :LENGTH] .< cleng)
     filter_t = [x for x in findall(filter_t) if !(x in bounds)]
 
     filter_t = [x for x in 1:nrow(grp) if !(x in filter_t)]
     grp = grp[filter_t, :]
-    code = set_interval_code_(grp, grp[!, :info_catg_], bh_)
-    grp = hcat(select(grp, Not(:code_catg_)), DataFrame((code_catg_=code,)))
+    code = set_interval_code_(grp, grp[!, info_var], bh_)
+    grp = hcat(select(grp, Not(code_var)), DataFrame((; code_var=>code)))
 
-    grp = groupby(grp, [:code_catg_, :info_catg_, bh_])
+    grp = groupby(grp, [code_var, info_var, bh_])
     grp = combine(grp, fr_ => minimum => fr_, to_ => maximum => to_)
     grp.LENGTH = grp[!, to_] - grp[!, fr_]
   end
@@ -67,7 +73,32 @@ function set_interval_code_(dh, catg, bh_)
   code
 end
 
-function extract_intrusion_pts(dh_, var, interior, exterior, composite=true, clipval=-999.9; compleng=1.0)
+function signed_distances(gtab::AbstractGeoTable, var=:info_catg_, interior=["Interior"], exterior=["Exterior"])
+  codes = getproperty(gtab, Symbol(var))
+  int_filter = findall(x -> x in interior, codes)
+  ext_filter = findall(x -> x in exterior, codes)
+  dom = domain(gtab)
+
+  s = KNearestSearch(view(dom, ext_filter), 1)
+  interior_sd = mapreduce(vcat, int_filter) do i
+    _, d = searchdists(centroid(dom, i), s)
+    -ustrip(d[0])
+  end
+
+  s = KNearestSearch(view(dom, int_filter), 1)
+  exterior_sd = mapreduce(vcat, ext_filter) do i
+    _, d = searchdists(centroid(dom, i), s)
+    ustrip(d[0])
+  end
+
+  sd = fill(NaN, length(dom))
+  sd[int_filter] .= interior_sd
+  sd[ext_filter] .= exterior_sd
+  gsd = georef((; :SD => sd), dom)
+  hcat(gtab, gsd)
+end
+
+function extract_intrusion_pts(dh_, var=:info_catg_, interior=["Interior"], exterior=["Exterior"]; spacing=1.0)
   dh = copy(dh_.table)
   bh_, fr_ = dh_.pars.holeid, dh_.pars.from
 
@@ -75,76 +106,36 @@ function extract_intrusion_pts(dh_, var, interior, exterior, composite=true, cli
   exterior_filter = findall(x -> x in exterior, dh[!, var])
   bhids = dh[!, bh_]
 
-  if composite
-    # split intervals in compleng m points or minimum of two values per interval; this rule can be improved
-    interior_cmp = mapreduce(vcat, interior_filter) do i
-      lngt, bh = abs(dh[i, :LENGTH]), dh[i, bh_]
-      fr = dh[i, fr_]
-      parts = ceil(Int, lngt / compleng) + 1
-      intervals = LinRange(0.01, lngt - 0.01, parts)
-      ofrom = [fr + itx for itx in intervals]
-      obhid = [bh for itx in intervals]
-      tab = DataFrame(bh_ => obhid, fr_ => ofrom)
-      fillxyz!(tab, dh_.trace, dh_.pars, output=["from"])
-      [(row[bh_], row[:X_FROM], row[:Y_FROM], row[:Z_FROM]) for row in eachrow(tab)]
-    end
-
-    exterior_cmp = mapreduce(vcat, exterior_filter) do i
-      lngt, bh = abs(dh[i, :LENGTH]), dh[i, bh_]
-      fr = dh[i, fr_]
-      parts = ceil(Int, lngt / compleng) + 1
-      intervals = LinRange(0.01, lngt - 0.01, parts)
-      ofrom = [fr + itx for itx in intervals]
-      obhid = [bh for itx in intervals]
-      tab = DataFrame(bh_ => obhid, fr_ => ofrom)
-      fillxyz!(tab, dh_.trace, dh_.pars, output=["from"])
-      [(row[bh_], row[:X_FROM], row[:Y_FROM], row[:Z_FROM]) for row in eachrow(tab)]
-    end
-
-    geoms = vcat([SVector(x[2:end]...) for x in interior_cmp], [SVector(x[2:end]...) for x in exterior_cmp])
-    bhids = vcat([x[1] for x in interior_cmp], [x[1] for x in exterior_cmp])
-    nint, nall = [length(interior_cmp), length(geoms)]
-    interior_filter = 1:nint
-    exterior_filter = (nint + 1):nall
-  else
-    if "Y_FROM" in names(dh)
-      geoms = [SVector(row[:X_FROM], row[:Y_FROM], row[:Z_FROM]) for row in eachrow(dh)]
-    else
-      # if not in columns, run fillxyz first
-      fillxyz!(dh, dh_.trace, dh_.pars, output=["from"])
-      geoms = [SVector(row[:X_FROM], row[:Y_FROM], row[:Z_FROM]) for row in eachrow(dh)]
-    end
+  # split intervals in spacing m points or minimum of two values per interval; this rule can be improved
+  interior_cmp = mapreduce(vcat, interior_filter) do i
+    lngt, bh = abs(dh[i, :LENGTH]), dh[i, bh_]
+    fr = dh[i, fr_]
+    parts = ceil(Int, lngt / spacing) + 1
+    intervals = LinRange(0.01, lngt - 0.01, parts)
+    ofrom = [fr + itx for itx in intervals]
+    obhid = [bh for itx in intervals]
+    tab = DataFrame(bh_ => obhid, fr_ => ofrom)
+    fillxyz!(tab, dh_.trace, dh_.pars, output=["from"])
+    [(row[bh_], row[:X_FROM], row[:Y_FROM], row[:Z_FROM]) for row in eachrow(tab)]
   end
 
-  interior = geoms[interior_filter]
-  exterior = geoms[exterior_filter]
+  exterior_cmp = mapreduce(vcat, exterior_filter) do i
+    lngt, bh = abs(dh[i, :LENGTH]), dh[i, bh_]
+    fr = dh[i, fr_]
+    parts = ceil(Int, lngt / spacing) + 1
+    intervals = LinRange(0.01, lngt - 0.01, parts)
+    ofrom = [fr + itx for itx in intervals]
+    obhid = [bh for itx in intervals]
+    tab = DataFrame(bh_ => obhid, fr_ => ofrom)
+    fillxyz!(tab, dh_.trace, dh_.pars, output=["from"])
+    [(row[bh_], row[:X_FROM], row[:Y_FROM], row[:Z_FROM]) for row in eachrow(tab)]
+  end
 
-  # interior signed distances
-  tree = KDTree(exterior) #origin
-  idxs, dists = nn(tree, interior) #target
-  interior_sd = -1 * dists
-
-  # exterior signed distances
-  tree = KDTree(interior) #origin
-  idxs, dists = nn(tree, exterior) #target
-  exterior_sd = dists
-
-  # clip vals
-  clipval == -999.9 && (clipval = std(vcat(interior_sd, exterior_sd)) * 2)
-  interior_sd = clamp.(interior_sd, -clipval, 0)
-  exterior_sd = clamp.(exterior_sd, 0, clipval)
-
-  sd = fill(NaN, length(geoms))
-  sd[interior_filter] .= interior_sd
-  sd[exterior_filter] .= exterior_sd
-  out = DataFrame(
-    bh_ => bhids,
-    :X => [x[1] for x in geoms],
-    :Y => [x[2] for x in geoms],
-    :Z => [x[3] for x in geoms],
-    :SD => round.(sd, digits=2)
-  )
-  georef(out, (:X, :Y, :Z))
+  geoms = vcat([Point(x[2:end]...) for x in interior_cmp], [Point(x[2:end]...) for x in exterior_cmp])
+  bhids = vcat([x[1] for x in interior_cmp], [x[1] for x in exterior_cmp])
+  vals = vcat(["Interior" for x in interior_cmp], ["Exterior" for x in exterior_cmp])
+  tab = (; bh_ => bhids, var => vals)
+  georef(tab, PointSet(geoms))
 end
 
 LocalEstimator = Union{LocalKrigingModel,LocalIDWModel}
@@ -186,12 +177,14 @@ function intrusion_model(
     sub_interpolant_ =
       sub_interpolant isa LocalKrigingModel ? LocalKriging(sub_interpolant.method, lp_, sub_interpolant.γ) :
       LocalIDW(sub_interpolant.exponent, lp_)
-    dh |> LocalInterpolate(refined.geometry, :SD => sub_interpolant_, maxneighbors=sub_maxneighbors)
+    dh |> Select(:SD) |> LocalInterpolate(refined.geometry, model=sub_interpolant_, maxneighbors=sub_maxneighbors)
   else
     chunks = collect(partition(refined.geometry, UniformPartition(Threads.nthreads(), false)))
     foldxt(
       vcat,
-      Transducers.Map(x -> dh |> InterpolateNeighbors(x, :SD => sub_interpolant, maxneighbors=sub_maxneighbors)),
+      Transducers.Map(
+        x -> dh |> Select(:SD) |> InterpolateNeighbors(x, model=sub_interpolant, maxneighbors=sub_maxneighbors)
+      ),
       chunks
     )
   end
@@ -202,14 +195,14 @@ function intrusion_model(
   est
 end
 
-function extract_contacts(grp; valid_holeids=nothing)#, minz=-8000, maxz=8000)
+function extract_contacts(grp; valid_holeids=nothing, code_var=:code_catg_, info_var=:info_catg_)
   ## i guess it works only if the stratigraphy is exterior at the bottom and interior at the top
   pars = grp.pars
   bh_, fr_, to_ = pars.holeid, pars.from, pars.to
   maxz = maximum(vcat(grp.table[!, :Z_FROM], grp.table[!, :Z_TO])) + 1
   minz = minimum(vcat(grp.table[!, :Z_FROM], grp.table[!, :Z_TO])) - 1
 
-  dh_contact = groupby(grp.table, [bh_, :info_catg_])
+  dh_contact = groupby(grp.table, [bh_, info_var])
   dh_contact = combine(
     dh_contact,
     fr_ => minimum => fr_,
@@ -227,7 +220,7 @@ function extract_contacts(grp; valid_holeids=nothing)#, minz=-8000, maxz=8000)
   #dh_contact.MinZ = maximum(df[!, [:MaxZ_FROM, :MaxZ_TO]], dims=2) .- 0.01
   #dh_contact.MaxZ = minimum(df[!, [:MinZ_FROM, :MinZ_TO]], dims=2) .+ 0.01
 
-  interior = dh_contact[!, :info_catg_] .== "Interior"
+  interior = dh_contact[!, info_var] .== "Interior"
   dh_contact[interior, :MinZ] .= minz
   dh_contact[.!interior, :MaxZ] .= maxz
   dh_contact = groupby(dh_contact, bh_)
@@ -237,14 +230,14 @@ function extract_contacts(grp; valid_holeids=nothing)#, minz=-8000, maxz=8000)
     to_ => maximum => to_,
     :MinZ => maximum => :MinZ,
     :MaxZ => minimum => :MaxZ,
-    :info_catg_ => first => :First,
-    :info_catg_ => last => :Last,
-    :info_catg_ => length => :COUNT,
+    info_var => first => :First,
+    info_var => last => :Last,
+    info_var => length => :COUNT,
     :Z0 => maximum => :Z0
   )
 
   contact_rule = (dh_contact[!, :COUNT] .> 1) .& (dh_contact[!, :First] .!= dh_contact[!, :Last])
-  if valid_holeids != nothing
+  if !isnothing(valid_holeids)
     valid_holeids = [x in valid_holeids for x in dh_contact[!, bh_]]
     contact_rule = contact_rule .& valid_holeids
   end
@@ -254,10 +247,10 @@ function extract_contacts(grp; valid_holeids=nothing)#, minz=-8000, maxz=8000)
   # Get Z contact; add some rule later to get first contact or last contact
   contact_pts = filter(row -> row[bh_] in holeids_contact, grp.table)
   contact_pts = groupby(contact_pts, [bh_, :info_catg_])
-  contact_pts = combine(contact_pts, :code_catg_ => last => :code)
+  contact_pts = combine(contact_pts, code_var => last => :code)
 
   contact_pts = contact_pts[contact_pts[!, :info_catg_] .== "Exterior", :code]
-  contact_pts = filter(row -> row.code_catg_ in contact_pts, grp.table)
+  contact_pts = filter(row -> row[code_var] in contact_pts, grp.table)
   contact_pts = select(contact_pts, bh_, :X_FROM => :X, :Y_FROM => :Y, :Z_FROM => :Z)
 
   # Merge info
@@ -324,8 +317,14 @@ function impute_missing_contacts(contact_table, interpolant, comps; only_2d=fals
   DrillHole(newdh, comps.trace, pars, comps.warns)
 end
 
-# length to extrapolation assumes it is subvertical, does not use survey angle to adjust it
-function extrapolate_borders(dh_; min_dip=45.0, ignore_lower=[], ignore_upper=[])
+function extrapolate_borders(
+  dh_;
+  min_abs_dip=45.0,
+  ignore_lower=[],
+  ignore_upper=[],
+  code_var=:code_catg_,
+  info_var=:info_catg_
+)
   pars = dh_.pars
   dip_negative = !pars.invdip
 
@@ -336,40 +335,40 @@ function extrapolate_borders(dh_; min_dip=45.0, ignore_lower=[], ignore_upper=[]
 
   dip_negative && (dh_valid[!, dp_] .*= -1)
   dh_valid = combine(groupby(dh_.trace, bh_), dp_ => first => dp_)
-  dh_valid = dh_valid[dh_valid[!, dp_] .> min_dip, bh_]
+  dh_valid = dh_valid[abs.(dh_valid[!, dp_]) .> min_abs_dip, bh_]
   dh_valid = filter(row -> row[bh_] in dh_valid && !(row[bh_] in ignore_upper), dh)
 
   upper_extrap = groupby(dh_valid, bh_)
   upper_extrap = combine(
     upper_extrap,
-    :code_catg_ => first => :code_catg_,
-    :info_catg_ => first => :info_catg_,
+    code_var => first => code_var,
+    info_var => first => info_var,
     fr_ => first => to_,
     :Z_FROM => first => :Z
   )
   upper_extrap[!, :LENGTH] = maxz .- upper_extrap[!, :Z]
   upper_extrap[!, fr_] = upper_extrap[!, to_] - upper_extrap[!, :LENGTH]
-  upper_extrap = upper_extrap[upper_extrap[!, :info_catg_] .== "Interior", Not(:Z)]
+  upper_extrap = upper_extrap[upper_extrap[!, info_var] .== "Interior", Not(:Z)]
 
   dh_valid = combine(groupby(dh_.trace, bh_), dp_ => last => dp_)
-  dh_valid = dh_valid[dh_valid[!, dp_] .> min_dip, bh_]
+  dh_valid = dh_valid[abs.(dh_valid[!, dp_]) .> min_abs_dip, bh_]
   dh_valid = filter(row -> row[bh_] in dh_valid && !(row[bh_] in ignore_lower), dh)
 
   lower_extrap = groupby(dh_valid, bh_)
   lower_extrap = combine(
     lower_extrap,
-    :code_catg_ => last => :code_catg_,
-    :info_catg_ => last => :info_catg_,
+    code_var => last => code_var,
+    info_var => last => info_var,
     to_ => last => fr_,
     :Z_TO => last => :Z
   )
   lower_extrap[!, :LENGTH] = lower_extrap[!, :Z] .- minz
   lower_extrap[!, to_] = lower_extrap[!, fr_] + lower_extrap[!, :LENGTH]
-  lower_extrap = lower_extrap[lower_extrap[!, :info_catg_] .== "Exterior", Not(:Z)]
+  lower_extrap = lower_extrap[lower_extrap[!, info_var] .== "Exterior", Not(:Z)]
 
   newdh = vcat(dh, upper_extrap, lower_extrap, cols=:intersect) |> Sort([bh_, fr_])
-  newdh[!, :code_catg_] = set_interval_code_(newdh, newdh[!, :info_catg_], bh_)
-  newdh = groupby(newdh, [:code_catg_, :info_catg_, bh_])
+  newdh[!, code_var] = set_interval_code_(newdh, newdh[!, info_var], bh_)
+  newdh = groupby(newdh, [code_var, info_var, bh_])
   newdh = combine(newdh, fr_ => minimum => fr_, to_ => maximum => to_)
   newdh[!, :LENGTH] = newdh[!, to_] - newdh[!, fr_]
 
@@ -377,7 +376,7 @@ function extrapolate_borders(dh_; min_dip=45.0, ignore_lower=[], ignore_upper=[]
   DrillHole(newdh, dh_.trace, pars, dh_.warns)
 end
 
-function localaniso_from_pts(comps; ratios=[1.0, 1.0, 0.5], ball=200)
+function localaniso_from_pts(comps::DrillHole; ratios=[1.0, 1.0, 0.5], ball=200)
   holeid = comps.pars.holeid
   f = row -> -1 <= row[:SD] < 0
   sd = extract_intrusion_pts(comps, :info_catg_, ["Interior"], ["Exterior"]) |> GeoStats.Filter(f)
@@ -395,9 +394,35 @@ function localaniso_from_pts(comps; ratios=[1.0, 1.0, 0.5], ball=200)
   tri = mapreduce(vcat, geom) do pt
     p = centroid(pt)
     n = search(p, searcher)
-    length(n) == 3 ? Triangle(geom[n]...) : nothing
-  end |> x -> filter(!isnothing, x)
+    length(n) == 3 ? Triangle(geom[n]...) : missing
+  end
 
+  tri = filter(!ismissing, tri)
+  tri = GeometrySet(tri)
+  tri, localanisotropies(Geometric, tri, ratios)
+end
+
+function localaniso_from_pts(pts::AbstractGeoTable, holeid; ratios=[1.0, 1.0, 0.5], ball=200)
+  f = row -> -1 <= row[:SD] < 0
+  sd = pts |> GeoStats.Filter(f)
+
+  searcher = AdvBallSearch(
+    sd,
+    MetricBall(ball),
+    k=3,
+    usesectors=(max=1, n=8, split=false),
+    maxpercategory=(; holeid => 1),
+    rank_metric=:same
+  )
+  geom = sd.geometry
+
+  tri = mapreduce(vcat, geom) do pt
+    p = centroid(pt)
+    n = search(p, searcher)
+    length(n) == 3 ? Triangle(geom[n]...) : missing
+  end
+
+  tri = filter(!ismissing, tri)
   tri = GeometrySet(tri)
   tri, localanisotropies(Geometric, tri, ratios)
 end

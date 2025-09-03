@@ -237,26 +237,32 @@ function conditional_cdf(x2, weights, means, stds)
   end
 end
 
-function dt_forward(x1_arr, x2_arr, gmm::GMM_pars)
-  mapreduce(vcat, zip(x1_arr, x2_arr)) do (x1, x2)
-    w, m, s = gmm_conditional(gmm, x1)
-    cdf2 = conditional_cdf(x2, w, m, s)
-    quantile(Normal(), cdf2)
+function dt_forward(x1_arr, x2_arr, gmm::GMM_pars; threads=1)
+  partitions = nreal_partitions(length(x1_arr), threads)
+  tmapreduce(vcat, partitions) do inds
+    mapreduce(vcat, zip(x1_arr[inds], x2_arr[inds])) do (x1, x2)
+      w, m, s = gmm_conditional(gmm, x1)
+      cdf2 = conditional_cdf(x2, w, m, s)
+      quantile(Normal(), cdf2)
+    end
   end
 end
 
-function dt_backward(y1_arr, y2_arr, gmm::GMM_pars; bounds=(-5.0, 5.0), method=Roots.Bisection())
+function dt_backward(y1_arr, y2_arr, gmm::GMM_pars; bounds=(-5.0, 5.0), method=Roots.Bisection(), threads=1)
   # method Roots.Brent() possible too if preferred
-  mapreduce(vcat, zip(y1_arr, y2_arr)) do (y1, y2)
-    p = cdf(Normal(), y2)
-    w, m, s = gmm_conditional(gmm, y1)
-    f(x) = conditional_cdf(x, w, m, s) - p
-    if isnothing(bounds)
-      μ_mix = sum(w .* m)
-      σ_mix = sqrt(sum(w .* (s .^ 2 .+ (m .- μ_mix) .^ 2)))
-      fzero(f, quantile(Normal(μ_mix, σ_mix), p))
-    else
-      find_zero(f, bounds, method)
+  partitions = nreal_partitions(length(y1_arr), threads)
+  tmapreduce(vcat, partitions) do inds
+    mapreduce(vcat, zip(y1_arr[inds], y2_arr[inds])) do (y1, y2)
+      p = cdf(Normal(), y2)
+      w, m, s = gmm_conditional(gmm, y1)
+      f(x) = conditional_cdf(x, w, m, s) - p
+      if isnothing(bounds)
+        μ_mix = sum(w .* m)
+        σ_mix = sqrt(sum(w .* (s .^ 2 .+ (m .- μ_mix) .^ 2)))
+        fzero(f, quantile(Normal(μ_mix, σ_mix), p))
+      else
+        find_zero(f, bounds, method)
+      end
     end
   end
 end

@@ -1,27 +1,12 @@
-using GeoStats
-using CSV
-using DataFrames
-using Transducers
 
-nthr = Base.Threads.nthreads()
-mapxt = Transducers.Map
-geovcat(items...) = vcat([x for x in items if x != nothing]...)
-
-function class_blk(dh, to_estim, ct, advsearch)
-  grid = to_estim.geometry
-  #knn = KNearestSearch(dh, 1)
+function class_blk(dh, blk, ct, advsearch, class_rule)
   rangedist = ustrip(advsearch.ball.radii[1])
-  catgs = mapreduce(vcat, grid) do blk
-    p = centroid(blk)
-    n = search(p, advsearch)
-    outval = if length(n) == 3
-      dists = [evaluate(Euclidean(), ustrip.(to(p)), ustrip.(to(centroid(dh, ind)))) for ind in n]
-      (sum(dists) < rangedist * 2) ? ct : NaN
-    else
-      NaN
-    end
-    outval
+  p = centroid(blk)
+  n = search(p, advsearch)
+  if length(n) == advsearch.k
+    dists = [evaluate(Euclidean(), ustrip.(to(p)), ustrip.(to(centroid(dh, ind)))) for ind in n]
+    class_rule(dists, rangedist) ? ct : 4
+  else
+    4
   end
-  catgs = catgs isa AbstractVector ? catgs : [catgs]
-  georef((RCATG=catgs, IJK=to_estim.IJK), grid)
 end

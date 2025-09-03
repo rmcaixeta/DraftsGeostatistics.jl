@@ -1,7 +1,4 @@
 
-nthr = Base.Threads.nthreads()
-mapxt = Transducers.Map
-
 function nreal_partitions(nreal, npart)
   flat_v = 1:nreal
   base_size, remainder = divrem(nreal, npart)

@@ -10,6 +10,7 @@ using LinearAlgebra
 using LocalAnisotropies
 using NearestNeighbors
 using Optim
+using OhMyThreads: tmapreduce
 using Parquet2: writefile
 using Printf
 using Roots
@@ -17,7 +18,6 @@ using Setfield
 using StableRNGs
 using StaticArrays
 using StatsBase
-using Transducers
 using Unitful
 import CoordRefSystems: lentype
 import Distributions
@@ -72,6 +72,7 @@ export composite,
   fval_la,
   get_filters,
   global_mean_validation,
+  gt_to_dataframe,
   impute_missing_contacts,
   intrusion_model,
   join_anisotropic_variogram,
@@ -91,8 +92,10 @@ export composite,
   #regblks_estimation,
   regblks_simulation,
   regblks_to_subblks,
+  signed_distances,
   variog_ns_to_orig,
   write_dh,
   write_expvario,
-  write_parquet
+  write_parquet,
+  write_table
 end

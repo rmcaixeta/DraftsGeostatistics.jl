@@ -22,7 +22,7 @@ function read_vartable(path::String)
 end
 
 function coord_table(geotable)
-  dom = domain(geotable)
+  dom = geotable isa AbstractGeoTable ? domain(geotable) : geotable
   nd = embeddim(dom)
   cnames = [:x, :y, :z][1:nd]
   points = [centroid(dom, i) for i in 1:nelements(dom)]
@@ -51,4 +51,19 @@ function write_parquet(outfile, geotab::GeoTable; save_coords=true)
   writefile(outfile, tab)
 end
 
+function write_csv(outfile, geotab::GeoTable; save_coords=true)
+  vals = DataFrame(values(geotab))
+  tab = save_coords ? hcat(DataFrame(coord_table(geotab)), vals) : vals
+  CSV.write(outfile, tab)
+end
+
 write_parquet(outfile, tab) = writefile(outfile, tab)
+write_csv(outfile, tab) = CSV.write(outfile, tab)
+
+function write_table(outfile, obj; kwargs...)
+  ext = split(outfile, ".")[end]
+  writer_fun = ext == "parquet" ? write_parquet : write_csv
+  writer_fun(outfile, obj; kwargs...)
+end
+
+gt_to_dataframe(gt) = mapreduce(DataFrame, hcat, [coord_table(gt), values(gt)])
