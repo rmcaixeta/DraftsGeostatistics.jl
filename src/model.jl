@@ -82,13 +82,13 @@ function signed_distances(gtab::AbstractGeoTable, var=:info_catg_, interior=["In
   s = KNearestSearch(view(dom, ext_filter), 1)
   interior_sd = mapreduce(vcat, int_filter) do i
     _, d = searchdists(centroid(dom, i), s)
-    -ustrip(d[0])
+    -ustrip(d[1])
   end
 
   s = KNearestSearch(view(dom, int_filter), 1)
   exterior_sd = mapreduce(vcat, ext_filter) do i
     _, d = searchdists(centroid(dom, i), s)
-    ustrip(d[0])
+    ustrip(d[1])
   end
 
   sd = fill(NaN, length(dom))

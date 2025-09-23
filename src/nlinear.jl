@@ -116,7 +116,7 @@ function find_R(data_var::Float64, f::Float64, coeffs; abs_tol=0.00001)
     abs(dot_product - variance)
   end
 
-  opt = optimize(r -> objective(r, exponent, sq_coeffs, variance), -1.0, 1.0, abs_tol=abs_tol)
+  opt = optimize(r -> objective(r, exponent, sq_coeffs, variance), 0.0, 1.0, abs_tol=abs_tol)
   Optim.minimizer(opt)[1]
 end
 
@@ -128,7 +128,7 @@ function find_R(vals::AbstractVector, ns_vals::AbstractVector, f; nhermites=100,
 
   fvals = f isa AbstractVector ? f : [f]
   mapreduce(vcat, fvals) do f_i
-    find_R(var(vals), f_i, coeffs; abs_tol)
+    find_R(var_coeffs, f_i, coeffs; abs_tol)
   end
 end
 
@@ -137,10 +137,11 @@ function transform_dist(r, poly, coeffs)
   sort(sum(changed_constants .* poly, dims=1)[:])
 end
 
-function dgm(vals, ns_vals, f; nhermites=100, abs_tol=0.00001)
+function dgm(vals, ns_vals, f; nhermites=100, abs_tol=0.00001, custom_var=nothing)
   poly = hermite_polynomial_values(nhermites, ns_vals)
   coeffs = hermite_constants(vals, ns_vals, poly)
-  r = find_R(var(vals), f, coeffs; abs_tol)
+  variance = isnothing(custom_var) ? sum([x^2 for x in coeffs[2:end]]) : custom_var
+  r = find_R(variance, f, coeffs; abs_tol)
   transform_dist(r, poly, coeffs)
 end
 
@@ -165,7 +166,8 @@ function quantiles_dgm(n::Normal, dt, gmm::Union{GMM_pars,AbstractGeoTable}, ref
     bt1 = dt_backward([mean(dt) for i in qs], [mean(n) for i in qs], gmm)
     back_nscore(bt1, refd)
   else
-    bt1 = dt_backward(sample(dt, length(qs), replace=true), quantile(n, qs), gmm)
+    #bt1 = dt_backward(sample(dt, length(qs), replace=true), quantile(n, qs), gmm)
+    bt1 = dt_backward(dt, quantile(n, qs), gmm)
     vals = back_nscore(bt1, refd)
     dgm(vals, f; nhermites=100, abs_tol=0.00001)
   end
