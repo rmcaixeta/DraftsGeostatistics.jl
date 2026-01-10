@@ -14,14 +14,14 @@ e2 = DirectionalVariogram((0.,1.), dh, :Au, maxlag=20,nlags=10)
 structures = [SphericalVariogram, ExponentialVariogram]
 fitted_variograms = multifit(structures, [e1,e2])
 """
-function multifit(sts::AbstractVector, evario::AbstractVector; sill::Number=1.0, fixnugget=-1.0)
+function multifit(sts::AbstractVector, evario::AbstractVector; sill::Number=1.0, fixnugget=-1.0, minrange=1.5)
   initguess = initialguess(sts, evario) #[cc1, cc2, r1_e1, r2_e1, r1_e2, r2_e2]
-  opt = optimize(x -> obj_function(x, evario, sts, sill, fixnugget), initguess)
+  opt = optimize(x -> obj_function(x, evario, sts, sill, fixnugget, minrange), initguess)
   res = Optim.minimizer(opt)
   [model_from_pars(res, sill, sts; id=x, fixnugget)[1] for x in 1:length(evario)]
 end
 
-function model_from_pars(pars, vvar, sts; id=1, fixnugget=-1.0)
+function model_from_pars(pars, vvar, sts; id=1, fixnugget=-1.0, minrange=1.5)
   nst = length(sts)
   cc = pars[1:nst]
   rang = pars[(nst * id + 1):(nst * (id + 1))]
@@ -31,16 +31,16 @@ function model_from_pars(pars, vvar, sts; id=1, fixnugget=-1.0)
   for i in 1:nst
     model += sts[i](sill=cc[i] * vvar, range=rang[i])
   end
-  flagerror = (sum(pars .< 0) > 0) | (sum(cc) > 1.0)
+  flagerror = (sum(pars .< 0) > 0) | (sum(cc) > 1.0) | (minimum(rang) < minrange)
   model, flagerror
 end
 
 variovalues(v::EmpiricalVariogram) = (v.abscissas, v.ordinates, v.counts)
 
-function obj_function(pars, vario, sts, vvar, fixnugget)
+function obj_function(pars, vario, sts, vvar, fixnugget, minrange)
   mse = 0.0
   for (i, v) in enumerate(vario)
-    model, flag = model_from_pars(pars, vvar, sts; id=i, fixnugget)
+    model, flag = model_from_pars(pars, vvar, sts; id=i, fixnugget, minrange)
     penalty = flag ? vvar * 100 : 0.0
 
     x, y, n = variovalues(v)
@@ -162,10 +162,11 @@ function write_expvario(outfile, ev)
   CSV.write(outfile, tab)
 end
 
-function read_expvario(infile; distance=Euclidean(), estimator=GeoStatsFunctions.MatheronEstimator(), maxlag=-1)
+function read_expvario(infile; distance=Euclidean(), estimator=GeoStatsFunctions.MatheronEstimator(), maxlag=-1, rescale=-1.0)
   tab = CSV.read(infile, DataFrame)
   tab = maxlag > 0 ? tab[tab.abscissas .<= maxlag, :] : tab
-  EmpiricalVariogram(tab.counts, tab.abscissas * u"m", tab.ordinates, distance, estimator)
+  ord = rescale < 0 ? tab.ordinates : rescale .* tab.ordinates
+  EmpiricalVariogram(tab.counts, tab.abscissas * u"m", ord, distance, estimator)
 end
 
 function variog_ns_to_orig(nsvario, refd; normalize=false)
@@ -176,7 +177,7 @@ function variog_ns_to_orig(nsvario, refd; normalize=false)
   norm_f = normalize ? var(refd.values) : 1.0
 
   newv = mapreduce(vcat, nsvario.ordinates) do v
-    p = 1 - v
+    p = clamp(1 - v, -1, 1)
     y2 = (y1 .* p) .+ (s2 .* sqrt(1 - (p^2)))
     o2 = back_nscore(y2, refd)
     newv = (o1 .- o2) .^ 2
@@ -192,7 +193,7 @@ function variog_ns_to_orig(nsvario, gmm, refd; normalize=false)
   norm_f = normalize ? var(refd.values) : 1.0
 
   newv = mapreduce(vcat, nsvario.ordinates) do v
-    p = 1 - v
+    p = max(0, 1 - v)
     y2 = (y1 .* p) .+ (s2 .* sqrt(1 - (p^2)))
     t2 = rand(N, 10^5)
     o2 = back_nscore(dt_backward(t2, y2, gmm), refd)
