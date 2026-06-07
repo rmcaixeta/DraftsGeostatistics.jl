@@ -35,7 +35,7 @@ function GeoStatsBase.folds(domain::Domain, method::GroupFolding)
 end
 
 function GeoStatsValidation.cverror(
-  setup::GeoStatsValidation.ErrorSetup,
+  model,
   geotable::AbstractGeoTable,
   method::LeaveHoleOut
 )
@@ -47,7 +47,7 @@ function GeoStatsValidation.cverror(
 
   wcv = WeightedValidation(weighting, folding, lambda=1, loss=method.loss)
 
-  cverror(setup, geotable, wcv)
+  cverror(model, geotable, wcv)
 end
 
 const INTERPNEIGHBORS = (:minneighbors, :maxneighbors, :neighborhood, :distance)
@@ -60,14 +60,13 @@ function local_cverror(
 ) where {M<:GeoStatsModels.GeoStatsModel}
   I = any(∈(INTERPNEIGHBORS), keys(kwargs)) ? InterpolateNeighbors : Interpolate
   I = model isa LocalKrigingModel ? LocalInterpolate : I
-  setup = GeoStatsValidation.InterpSetup{I,M,typeof(kwargs)}(model, kwargs)
-  cverror(setup, geotable, method)
+  cverror(model, geotable, method)
 end
 
-function GeoStatsValidation._prediction(s::GeoStatsValidation.InterpSetup{I}, geotable, f) where {I<:LocalInterpolate}
-  sdat = view(geotable, f[1])
-  sdom = view(domain(geotable), f[2])
-  smod = deepcopy(s.model)
-  smod = @set smod.localaniso = view(s.model.localaniso, f[2])
-  sdat |> I(sdom; model=smod, s.kwargs...)
-end
+# function GeoStatsValidation._prediction(s::GeoStatsValidation.InterpSetup{I}, geotable, f) where {I<:LocalInterpolate}
+#   sdat = view(geotable, f[1])
+#   sdom = view(domain(geotable), f[2])
+#   smod = deepcopy(s.model)
+#   smod = @set smod.localaniso = view(s.model.localaniso, f[2])
+#   sdat |> I(sdom; model=smod, s.kwargs...)
+# end

@@ -250,7 +250,7 @@ function dt_forward(x1_arr, x2_arr, gmm::GMM_pars; threads=1)
   end
 end
 
-function dt_backward(y1_arr, y2_arr, gmm::GMM_pars; bounds=(-5.0, 5.0), method=Roots.Bisection(), threads=1)
+function dt_backward(y1_arr, y2_arr, gmm::GMM_pars; bounds=(-10.0, 10.0), method=Roots.Bisection(), threads=1)
   # method Roots.Brent() possible too if preferred
   partitions = nreal_partitions(length(y1_arr), threads)
   tmapreduce(vcat, partitions) do inds
@@ -280,6 +280,6 @@ function dt_table(gmm::GMM_pars; bounds=(-4.5, 4.5), vals=500)
   yij = Iterators.product(yi, yi)
   tcat = (a, b) -> (vcat(a[1], b[1]), vcat(a[2], b[2]))
   y1, y2 = reduce(tcat, yij)
-  x2 = dt_backward(y1, y2, gmm, bounds=nothing)
+  x2 = dt_backward(y1, y2, gmm, bounds=(-8,8))
   georef((; :y1 => y1, :y2 => y2, :x2 => x2), (:y1, :y2))
 end
